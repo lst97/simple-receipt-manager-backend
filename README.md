@@ -15,7 +15,7 @@ python3 -m venv ./.venv
 ## Activating a virtual environment
 
 ```code
-source ./venv/bin/activate
+source ./.venv/bin/activate
 ```
 
 ## Using requirements files
