@@ -1,9 +1,0 @@
-LICENSE
-README.md
-pyproject.toml
-src/app/__init__.py
-src/app/main.py
-src/simple_recipt_manager_backend.egg-info/PKG-INFO
-src/simple_recipt_manager_backend.egg-info/SOURCES.txt
-src/simple_recipt_manager_backend.egg-info/dependency_links.txt
-src/simple_recipt_manager_backend.egg-info/top_level.txt
