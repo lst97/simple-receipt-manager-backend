@@ -23,15 +23,15 @@ def groups():
         return group_name
 
 
-@app.route('/<group>/records', methods=['POST', 'GET'])
-def groups():
+@app.route('/<group>/receipts', methods=['POST', 'GET'])
+def receipts():
     if request.method == "GET":
 
         return "TODO"
 
 
-@app.route('/<group>/recipt/<id>', methods=['POST', 'GET'])
-def groups():
+@app.route('/<group>/recipts/<id>', methods=['POST', 'GET'])
+def recipt():
     if request.method == "GET":
 
         db = establish_connection()
