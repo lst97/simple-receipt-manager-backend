@@ -23,3 +23,9 @@ source ./.venv/bin/activate
 ```code
 python3 -m pip install -r requirements.txt
 ```
+
+## Run
+
+```code
+python3 ./src/app/app.py
+```
