@@ -1,7 +1,11 @@
 from flask import Flask, request
 import pymongo
+from flask_cors import CORS
+import json
+from bson import json_util
 
 app = Flask(__name__)
+CORS(app)
 
 
 def establish_connection():
@@ -14,13 +18,28 @@ def establish_connection():
 
 @app.route('/groups', methods=['POST', 'GET'])
 def groups():
+    db = establish_connection()
+
     if request.method == "GET":
+        groups_collection = db.groups
 
+        # get all documents in the collection
+        cursor = groups_collection.find()
+
+        # convert cursor to JSON string
+        return json.dumps(list(cursor), default=json_util.default)
+
+
+@app.route('/groups_name', methods=['GET'])
+def groups_name():
+    if request.method == "GET":
         db = establish_connection()
+        groups_collection = db.groups
 
-        # Show all collections in the database
-        group_name = db.list_collection_names()
-        return group_name
+        cursor = groups_collection.find({}, {"name": 1, "_id": 0}).sort([
+            ('group_number', pymongo.ASCENDING)])
+
+        return json.dumps(list(cursor), default=json_util.default)
 
 
 @app.route('/<group>/receipts', methods=['POST', 'GET'])
