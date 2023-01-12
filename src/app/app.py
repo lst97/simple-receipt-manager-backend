@@ -30,13 +30,13 @@ def groups():
         return json.dumps(list(cursor), default=json_util.default)
 
 
-@app.route('/groups_name', methods=['GET'])
-def groups_name():
+@app.route('/groups_info', methods=['GET'])
+def groups_info():
     if request.method == "GET":
         db = establish_connection()
         groups_collection = db.groups
 
-        cursor = groups_collection.find({}, {"name": 1, "_id": 0}).sort([
+        cursor = groups_collection.find({}, {"name": 1}).sort([
             ('group_number', pymongo.ASCENDING)])
 
         return json.dumps(list(cursor), default=json_util.default)
