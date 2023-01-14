@@ -2,14 +2,11 @@ from flask import Flask, request
 import pymongo
 from flask_cors import CORS
 import json
-<<<<<<< HEAD
-from bson import json_util, ObjectId
+from bson import json_util
 from dotenv import load_dotenv
 import os
 from os.path import join, dirname
-=======
-from bson import json_util
->>>>>>> parent of 089802b (build: group records route)
+
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
