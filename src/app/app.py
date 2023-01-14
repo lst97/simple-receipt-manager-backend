@@ -3,17 +3,22 @@ import pymongo
 from flask_cors import CORS
 import json
 from bson import json_util, ObjectId
+from dotenv import load_dotenv
+import os
+from os.path import join, dirname
 
+load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
 CORS(app)
 
 
 def establish_connection():
     # Connect to the MongoDB server
-    client = pymongo.MongoClient("mongodb://localhost:27017/")
+    client = pymongo.MongoClient(
+        "mongodb+srv://{0}:{1}@{2}/test".format(os.getenv('ADMIN_NAME'), os.getenv('ADMIN_PASSWORD'), os.getenv('DB_CONNECTION_STRING')))
 
     # Select the database
-    return client["simple_recipt_manager"]
+    return client["simple-receipt-manager"]
 
 
 @app.route('/groups', methods=['POST', 'GET'])
