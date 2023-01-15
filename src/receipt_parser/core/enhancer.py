@@ -24,6 +24,7 @@ from pytesseract import pytesseract
 from wand.image import Image as WandImage
 from scipy.ndimage import interpolation as inter
 from os.path import join, dirname
+import logging
 
 from .receipt import Receipt
 from .config import read_config
@@ -35,6 +36,8 @@ OUTPUT_FOLDER = os.path.join(BASE_PATH, "data/txt")
 
 ORANGE = '\033[33m'
 RESET = '\033[0m'
+
+LOGGER = logging.getLogger(__name__)
 
 
 def prepare_folders():
@@ -232,7 +235,8 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
 
     output_path = OUTPUT_FOLDER + "/" + filename.split(".")[0] + ".txt"
 
-    print(ORANGE + '~: ' + RESET + 'Process image: ' + ORANGE + input_path + RESET)
+    LOGGER.info(ORANGE + '~: ' + RESET + 'Process image: ' +
+                ORANGE + input_path + RESET)
     prepare_folders()
 
     try:
@@ -245,28 +249,29 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
     )
     img = enhance_image(img, tmp_path, grayscale, gaussian_blur)
 
-    print(ORANGE + '~: ' + RESET + 'Temporary store image at: ' +
-          ORANGE + tmp_path + RESET)
+    LOGGER.info(ORANGE + '~: ' + RESET + 'Temporary store image at: ' +
+                ORANGE + tmp_path + RESET)
 
     cv2.imwrite(tmp_path, img)
     run_tesseract(tmp_path, output_path, config.language)
 
-    print(ORANGE + '~: ' + RESET + 'Store parsed text at: ' +
-          ORANGE + output_path + RESET)
+    LOGGER.info(ORANGE + '~: ' + RESET + 'Store parsed text at: ' +
+                ORANGE + output_path + RESET)
     raw = open(output_path, 'r').readlines()
 
     return Receipt(config=config, raw=raw)
 
 
 def run():
+
     prepare_folders()
 
     config = read_config(config=join(
         dirname(__file__), '../config/config.yml'))
 
     images = list(find_images(INPUT_FOLDER))
-    print(ORANGE + '~: ' + RESET + 'Found: ' + ORANGE + str(len(images)),
-          RESET + ' images in: ' + ORANGE + INPUT_FOLDER + RESET)
+    LOGGER.info(ORANGE + '~: ' + RESET + 'Found: ' + ORANGE + str(len(images)
+                                                                  ) + RESET + ' images in: ' + ORANGE + INPUT_FOLDER + RESET)
 
     i = 1
     for image in images:
@@ -286,7 +291,7 @@ def run():
 
         if i != 1:
             print()
-        print(ORANGE + '~: ' + RESET + 'Process image (' + ORANGE + str(i) + '/' + str(
+        LOGGER.info(ORANGE + '~: ' + RESET + 'Process image (' + ORANGE + str(i) + '/' + str(
             len(images)) + RESET + ') : ' + input_path + RESET)
 
         img = cv2.imread(input_path)
