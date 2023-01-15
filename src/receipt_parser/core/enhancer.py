@@ -29,9 +29,13 @@ import logging
 from .receipt import Receipt
 from .config import read_config
 
+IMAGE_FOLDER = "data/img"
+TMP_FOLDER = "data/tmp"
+TEXT_FOLDER = "data/txt"
+
 BASE_PATH = join(dirname(__file__), '../')
 INPUT_FOLDER = os.path.join(BASE_PATH, "data/img")
-TMP_FOLDER = os.path.join(BASE_PATH, "data/tmp")
+OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, "data/tmp")
 OUTPUT_FOLDER = os.path.join(BASE_PATH, "data/txt")
 
 ORANGE = '\033[33m'
@@ -47,7 +51,7 @@ def prepare_folders():
     """
 
     for folder in [
-        INPUT_FOLDER, TMP_FOLDER, OUTPUT_FOLDER
+        INPUT_FOLDER, OUTPUT_TMP_FOLDER, OUTPUT_FOLDER
     ]:
         if not os.path.exists(folder):
             os.makedirs(folder)
@@ -151,6 +155,7 @@ def run_tesseract(input_file, output_file, language="eng"):
             out = open(output_file, "w", encoding='utf-8')
             out.write(image_data)
             out.close()
+    print(ORANGE + '\t~: ' + RESET + "DONE" + RESET)
 
 
 def rescale_image(img):
@@ -245,7 +250,7 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
         return Receipt(config=config, raw="")
 
     tmp_path = os.path.join(
-        TMP_FOLDER, filename
+        OUTPUT_TMP_FOLDER, filename
     )
     img = enhance_image(img, tmp_path, grayscale, gaussian_blur)
 
@@ -271,7 +276,7 @@ def run():
 
     images = list(find_images(INPUT_FOLDER))
     LOGGER.info(ORANGE + '~: ' + RESET + 'Found: ' + ORANGE + str(len(images)
-                                                                  ) + RESET + ' images in: ' + ORANGE + INPUT_FOLDER + RESET)
+                                                                  ) + RESET + ' images in: ' + ORANGE + IMAGE_FOLDER + RESET)
 
     i = 1
     for image in images:
@@ -280,7 +285,7 @@ def run():
             image
         )
         tmp_path = os.path.join(
-            TMP_FOLDER,
+            OUTPUT_TMP_FOLDER,
             image
         )
 
@@ -292,7 +297,7 @@ def run():
         if i != 1:
             print()
         LOGGER.info(ORANGE + '~: ' + RESET + 'Process image (' + ORANGE + str(i) + '/' + str(
-            len(images)) + RESET + ') : ' + input_path + RESET)
+            len(images)) + RESET + ') : ' + input_path.split('/')[-1] + RESET)
 
         img = cv2.imread(input_path)
         img = enhance_image(img, tmp_path)
