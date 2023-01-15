@@ -6,11 +6,13 @@ from bson import json_util, ObjectId
 from dotenv import load_dotenv
 import os
 from os.path import join, dirname
-
+import logging
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
 CORS(app)
+
+LOGGER = logging.getLogger("API")
 
 
 def establish_connection():

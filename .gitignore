@@ -13,3 +13,4 @@ src/receipt_parser/data/tmp/*
 src/receipt_parser/__pycache__
 src/api/__pycache__
 src/receipt_parser/core/__pycache__
+src/__pycache__/
