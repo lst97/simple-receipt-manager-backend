@@ -92,5 +92,5 @@ def recipt():
         return "TODO"
 
 
-if __name__ == '__main__':
+def run():
     app.run(debug=False)
