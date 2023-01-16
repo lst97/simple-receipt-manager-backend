@@ -1,9 +1,18 @@
-from core import enhancer as parser_core
+from core import enhancer
+from core import parse as parser
+import logging
+
+LOGGER = logging.getLogger("receipt_parser.driver")
 
 
 def run():
-    parser_core.run()
+    LOGGER.info("Start enhance images...")
+    enhancer.run()
+    # read OCR text
+    LOGGER.info("Start parsing OCR data...")
+    parser.run()
+    LOGGER.info("Parsing DONE.")
 
 
 if __name__ == "__main__":
-    parser_core.run()
+    run()

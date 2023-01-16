@@ -35,14 +35,14 @@ TMP_FOLDER = "data/tmp"
 TEXT_FOLDER = "data/txt"
 
 BASE_PATH = join(dirname(__file__), '../')
-INPUT_FOLDER = os.path.join(BASE_PATH, "data/img")
-OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, "data/tmp")
-OUTPUT_FOLDER = os.path.join(BASE_PATH, "data/txt")
+INPUT_FOLDER = os.path.join(BASE_PATH, IMAGE_FOLDER)
+OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, TMP_FOLDER)
+OUTPUT_FOLDER = os.path.join(BASE_PATH, TEXT_FOLDER)
 
 ORANGE = '\033[33m'
 RESET = '\033[0m'
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger("parser_core.enhancer")
 
 
 def prepare_folders():
@@ -310,7 +310,7 @@ def run():
 
         i = i + 1
 
-    LOGGER.info("Receipt Parser exit.")
+    LOGGER.info("Enhancer exit.")
 
 
 if __name__ == '__main__':

@@ -1,6 +1,8 @@
 import yaml
-
+import logging
 from .objectview import ObjectView
+
+LOGGER = logging.getLogger("parser_core.config")
 
 
 def read_config(config="config.yml"):
@@ -15,4 +17,4 @@ def read_config(config="config.yml"):
             docs = yaml.safe_load(stream)
             return ObjectView(docs)
         except yaml.YAMLError as e:
-            print(e)
+            logging.error(e)
