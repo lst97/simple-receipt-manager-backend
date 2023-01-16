@@ -1,47 +1,56 @@
 from api import srm_api
-from receipt_parser import receipt_parser
 import threading
 import logging
 import coloredlogs
-import os
-import signal
+import util
+import time
 
 LOGGER = logging.getLogger(__name__)
 
 
-def exit_main():
+class Thread(threading.Thread):
+    def run(self):
+        try:
+            threading.Thread.run(self)
+        except Exception as err:
+            self.err = err
+        else:
+            self.err = None
+
+
+def exit_parent_process():
     LOGGER.error("Main Process Exit.")
-    os.kill(os.getppid(), signal.SIGTERM)
+    util.kill_parent()
 
 
 def api_thread():
     LOGGER.info("Simple Receipt Manager Thread - RUNNING...")
-    srm_api.run()
-    # if either one thread exit, the main will be exit
-    LOGGER.error("api exit unexpectedly.")
-    exit_main()
-
-
-def receipt_parser_thread():
-    LOGGER.info("Receipt Parser Thread - RUNNING...")
-    receipt_parser.run()
-    # if either one thread exit, the main will be exit
-    LOGGER.error("receipt_parser_thread exit unexpectedly.")
-    exit_main()
+    try:
+        srm_api.run()
+    except Exception as err:
+        raise err
 
 
 def run():
     threads = []
-    api = threading.Thread(target=api_thread)
-    receipt_parser = threading.Thread(target=receipt_parser_thread)
-    threads.append(api)
-    threads.append(receipt_parser)
 
-    api.start()
-    receipt_parser.start()
+    while True:
+        api = Thread(target=api_thread)
+        api.start()
+        threads.append(api)
+        threads[0].join()  # only one thread at the moment
 
-    for thread in threads:
-        thread.join()
+        if threads[0].err is not None:
+            LOGGER.error(threads[0].err)
+            threads.pop()
+            LOGGER.error("api exit unexpectedly - RESTARTING...")
+
+            # Try to restart API
+            time.sleep(3)
+
+        else:
+            LOGGER.INFO("api exit - SUCCESS")
+            break
 
 
 if __name__ == '__main__':

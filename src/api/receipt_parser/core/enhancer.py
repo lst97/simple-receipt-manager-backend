@@ -25,6 +25,7 @@ from wand.image import Image as WandImage
 from scipy.ndimage import interpolation as inter
 from os.path import join, dirname
 import logging
+import coloredlogs
 
 from .receipt import Receipt
 from .config import read_config
@@ -268,6 +269,8 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
 
 
 def run():
+    coloredlogs.install(level='DEBUG')
+    coloredlogs.install(level='DEBUG', logger=LOGGER)
 
     prepare_folders()
 
@@ -306,3 +309,9 @@ def run():
         run_tesseract(tmp_path, out_path, config.language)
 
         i = i + 1
+
+    LOGGER.info("Receipt Parser exit.")
+
+
+if __name__ == '__main__':
+    run()
