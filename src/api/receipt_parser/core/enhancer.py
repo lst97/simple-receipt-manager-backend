@@ -25,19 +25,24 @@ from wand.image import Image as WandImage
 from scipy.ndimage import interpolation as inter
 from os.path import join, dirname
 import logging
+import coloredlogs
 
 from .receipt import Receipt
 from .config import read_config
 
+IMAGE_FOLDER = "data/img"
+TMP_FOLDER = "data/tmp"
+TEXT_FOLDER = "data/txt"
+
 BASE_PATH = join(dirname(__file__), '../')
-INPUT_FOLDER = os.path.join(BASE_PATH, "data/img")
-TMP_FOLDER = os.path.join(BASE_PATH, "data/tmp")
-OUTPUT_FOLDER = os.path.join(BASE_PATH, "data/txt")
+INPUT_FOLDER = os.path.join(BASE_PATH, IMAGE_FOLDER)
+OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, TMP_FOLDER)
+OUTPUT_FOLDER = os.path.join(BASE_PATH, TEXT_FOLDER)
 
 ORANGE = '\033[33m'
 RESET = '\033[0m'
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger("parser_core.enhancer")
 
 
 def prepare_folders():
@@ -47,7 +52,7 @@ def prepare_folders():
     """
 
     for folder in [
-        INPUT_FOLDER, TMP_FOLDER, OUTPUT_FOLDER
+        INPUT_FOLDER, OUTPUT_TMP_FOLDER, OUTPUT_FOLDER
     ]:
         if not os.path.exists(folder):
             os.makedirs(folder)
@@ -151,6 +156,7 @@ def run_tesseract(input_file, output_file, language="eng"):
             out = open(output_file, "w", encoding='utf-8')
             out.write(image_data)
             out.close()
+    print(ORANGE + '\t~: ' + RESET + "DONE" + RESET)
 
 
 def rescale_image(img):
@@ -245,7 +251,7 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
         return Receipt(config=config, raw="")
 
     tmp_path = os.path.join(
-        TMP_FOLDER, filename
+        OUTPUT_TMP_FOLDER, filename
     )
     img = enhance_image(img, tmp_path, grayscale, gaussian_blur)
 
@@ -263,6 +269,8 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
 
 
 def run():
+    coloredlogs.install(level='DEBUG')
+    coloredlogs.install(level='DEBUG', logger=LOGGER)
 
     prepare_folders()
 
@@ -271,7 +279,7 @@ def run():
 
     images = list(find_images(INPUT_FOLDER))
     LOGGER.info(ORANGE + '~: ' + RESET + 'Found: ' + ORANGE + str(len(images)
-                                                                  ) + RESET + ' images in: ' + ORANGE + INPUT_FOLDER + RESET)
+                                                                  ) + RESET + ' images in: ' + ORANGE + IMAGE_FOLDER + RESET)
 
     i = 1
     for image in images:
@@ -280,7 +288,7 @@ def run():
             image
         )
         tmp_path = os.path.join(
-            TMP_FOLDER,
+            OUTPUT_TMP_FOLDER,
             image
         )
 
@@ -292,7 +300,7 @@ def run():
         if i != 1:
             print()
         LOGGER.info(ORANGE + '~: ' + RESET + 'Process image (' + ORANGE + str(i) + '/' + str(
-            len(images)) + RESET + ') : ' + input_path + RESET)
+            len(images)) + RESET + ') : ' + input_path.split('/')[-1] + RESET)
 
         img = cv2.imread(input_path)
         img = enhance_image(img, tmp_path)
@@ -301,3 +309,9 @@ def run():
         run_tesseract(tmp_path, out_path, config.language)
 
         i = i + 1
+
+    LOGGER.info("Enhancer exit.")
+
+
+if __name__ == '__main__':
+    run()

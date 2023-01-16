@@ -22,12 +22,26 @@ from collections import defaultdict
 from terminaltables import SingleTable
 
 from .receipt import Receipt
+from .config import read_config
+from .parse import *
+from os.path import join, dirname
+import logging
 
-BASE_PATH = os.getcwd()
+LOGGER = logging.getLogger("parser_core.parser")
+BASE_PATH = join(dirname(__file__))
 ORANGE = '\033[33m'
 RESET = '\033[0m'
 
 STATS_OUTPUT_FORMAT = "{0:10.0f},{1:d},{2:d},{3:d},{4:d},\n"
+
+
+def run():
+    config = read_config(join(
+        dirname(__file__), '../config/config.yml'))
+
+    receipt_files = get_files_in_folder(config.receipts_path)
+    stats = ocr_receipts(config, receipt_files)
+    output_statistics(stats)
 
 
 def get_files_in_folder(folder, include_hidden=False):
@@ -48,14 +62,14 @@ def get_files_in_folder(folder, include_hidden=False):
         ]  #
 
     files = [
-        os.path.join(folder, f) for f in files
+        join(dirname(dirname(__file__)), "data/txt", f) for f in files
     ]  # complete path
     return [
         f for f in files if os.path.isfile(f)
     ]  # just files
 
 
-def output_statistics(stats, write_file="stats.csv"):
+def output_statistics(stats, write_file="data/stats.csv"):
     """
     :param stats: {}
         Statistics details
@@ -69,10 +83,10 @@ def output_statistics(stats, write_file="stats.csv"):
         time.time(), stats["total"], stats["market"], stats["date"],
         stats["sum"]
     )
-    # print(stats_str)
+    LOGGER.info("Statistics details: " + stats_str)
 
     if write_file:
-        with open(write_file, "a") as stats_file:
+        with open(join(dirname(dirname(__file__)), write_file), "a") as stats_file:
             stats_file.write(stats_str)
 
 
@@ -137,6 +151,7 @@ def ocr_receipts(config, receipt_files):
                 stats["sum"] += 1
 
     table = SingleTable(table_data)
+    LOGGER.info("Parser output:")
     print(table.table)
 
     return stats

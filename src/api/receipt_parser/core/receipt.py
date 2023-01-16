@@ -108,6 +108,11 @@ class Receipt(object):
         items = []
         item = namedtuple("item", ("article", "sum"))
 
+        if self.market is None:
+            # Need to add the market name into the fuzzer
+            self.market = ""
+            # raise Exception("No market matched.")
+
         ignored_words = self.config.get_config("ignore_keys", self.market)
         stop_words = self.config.get_config("sum_keys", self.market)
         item_format = self.config.get_config("item_format", self.market)

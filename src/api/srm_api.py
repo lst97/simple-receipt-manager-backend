@@ -7,12 +7,43 @@ from dotenv import load_dotenv
 import os
 from os.path import join, dirname
 import logging
+import subprocess
+import threading
+from .receipt_parser.core import parse
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
 CORS(app)
 
-LOGGER = logging.getLogger("API")
+LOGGER = logging.getLogger(__name__)
+
+
+def on_exit():
+    LOGGER.info("on_exit() callback EXECUTED.")
+
+
+def execute_receipt_parser():
+    def receipt_parser_thread(on_exit):
+        LOGGER.info("Create Receipt Parser subprocess.")
+        try:
+            subprocess.run(
+                ["python3", "./src/api/receipt_parser/receipt_parser.py"],)
+
+        except (OSError, subprocess.CalledProcessError) as exception:
+            LOGGER.error('Exception occured: ' + str(exception))
+            LOGGER.info('Receipt Parser failed to complete it execution.')
+            return False
+        else:
+            # notify API to find the result in data/txt
+            on_exit()
+
+        return True
+
+    parser_thread = threading.Thread(
+        target=receipt_parser_thread, args=(on_exit,))
+    parser_thread.start()
+
+    return parser_thread
 
 
 def establish_connection():
@@ -95,4 +126,7 @@ def recipt():
 
 
 def run():
+    # for DEBUG
+    execute_receipt_parser()
+
     app.run(debug=False)
