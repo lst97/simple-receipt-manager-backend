@@ -10,8 +10,11 @@ def run():
     enhancer.run()
     # read OCR text
     LOGGER.info("Start parsing OCR data...")
-    parser.run()
+    parsed_result = parser.run()
     LOGGER.info("Parsing DONE.")
+
+    pass
+    # upload result to MongoDB
 
 
 if __name__ == "__main__":

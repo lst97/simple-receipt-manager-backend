@@ -21,6 +21,16 @@ from collections import namedtuple
 from difflib import get_close_matches
 
 import dateutil.parser
+import requests
+
+ABN_API_BASE_URL = 'http://127.0.0.1:5000/external/abn/search'
+
+
+def get_name_by_abn(abn):
+    response = requests.get('{0}?id={1}'.format(
+        ABN_API_BASE_URL, abn)).json()
+
+    return response['merchant_name']
 
 
 class Receipt(object):
@@ -35,11 +45,25 @@ class Receipt(object):
         """
 
         self.config = config
-        self.market = None
-        self.date = None
-        self.sum = None
-        self.items = None
+        self.merchant_name = ""
+        self.merchant_address = ""  # complex process, implement later
+        self.merchant_phone = ""
+        self.merchant_company_reg_no = ""
+        self.country = "AU"  # Only support AU at the moment
+        self.receipt_no = ""
+        self.date = ""
+        self.time = ""
+        self.items = []
+        self.currency = ""
+        self.total = ""
+        self.subtotal = ""
+        self.tax = ""
+        self.payment_method = ""
+        self.payment_details = ""
+        self.credit_card_type = ""
+        self.credit_card_number = ""
         self.lines = raw
+        self.ocr_confidence = ""
         self.normalize()
         self.parse()
 
@@ -62,10 +86,32 @@ class Receipt(object):
             Parses obj data
         """
 
-        self.market = self.parse_market()
-        self.date = self.parse_date()
-        self.sum = self.parse_sum()
-        self.items = self.parse_items()
+        self.merchant_company_reg_no = self.parse_abn()
+        if self.merchant_company_reg_no != "":
+            self.merchant_name = get_name_by_abn(self.merchant_company_reg_no)
+
+        if self.merchant_name == "":
+            self.merchant_name = self.parse_marchant_name()
+            if self.merchant_name == "":
+                # find "pty. ltd." patten
+                # return the line
+                pass
+
+        self.merchant_phone = self.parse_phone()
+
+        self.receipt_no = ""  # TODO
+        self.date = ""
+        self.time = ""
+        self.items = []  # implement later, kind of complicated
+        self.currency = ""
+        self.total = ""
+        self.subtotal = ""
+        self.tax = ""
+        self.payment_method = ""
+        self.payment_details = ""
+        self.credit_card_type = ""
+        self.credit_card_number = ""
+        self.ocr_confidence = ""
 
     def fuzzy_find(self, keyword, accuracy=0.6):
         """
@@ -84,6 +130,29 @@ class Receipt(object):
             matches = get_close_matches(keyword, words, 1, accuracy)
             if matches:
                 return line
+
+    def parse_abn(self):
+        for abn_key in self.config.merchant_company_reg_no_keys:
+            abn_line = self.fuzzy_find(abn_key)
+            if abn_line:
+                abn_line = abn_line.replace(' ', '')
+                abn_line = abn_line.replace('\n', '')
+
+                abn_number = re.search(self.config.abn_format, abn_line)
+                if abn_number:
+                    return abn_number.group(0)
+        return ""
+
+    def parse_phone(self):
+        for phone_key in self.config.phone_keys:
+            phone_line = self.fuzzy_find(phone_key)
+            if phone_line:
+                phone_line = phone_line.replace('\n', '')
+
+                phone_number = re.search(self.config.phone_format, phone_line)
+                if phone_number:
+                    return phone_number.group(0)
+        return ""
 
     def parse_date(self):
         """
@@ -108,14 +177,10 @@ class Receipt(object):
         items = []
         item = namedtuple("item", ("article", "sum"))
 
-        if self.market is None:
-            # Need to add the market name into the fuzzer
-            self.market = ""
-            # raise Exception("No market matched.")
-
-        ignored_words = self.config.get_config("ignore_keys", self.market)
-        stop_words = self.config.get_config("sum_keys", self.market)
-        item_format = self.config.get_config("item_format", self.market)
+        ignored_words = self.config.get_config(
+            "ignore_keys", self.merchant_name)
+        stop_words = self.config.get_config("sum_keys", self.merchant_name)
+        item_format = self.config.get_config("item_format", self.merchant_name)
 
         for line in self.lines:
             parse_stop = None
@@ -127,7 +192,7 @@ class Receipt(object):
             if parse_stop:
                 continue
 
-            if self.market != "Metro":
+            if self.merchant_name != "Metro":
                 for stop_word in stop_words:
                     if fnmatch.fnmatch(line, f"*{stop_word}*"):
                         return items
@@ -147,7 +212,7 @@ class Receipt(object):
 
         return items
 
-    def parse_market(self):
+    def parse_marchant_name(self):
         """
         :return: str
             Parses market data
@@ -156,15 +221,16 @@ class Receipt(object):
         for int_accuracy in range(10, 6, -1):
             accuracy = int_accuracy / 10.0
 
-            min_accuracy, market_match = -1, None
-            for market, spellings in self.config.markets.items():
+            min_accuracy, market_match = -1, ""
+            for merchant_name, spellings in self.config.merchant_name.items():
                 for spelling in spellings:
                     line = self.fuzzy_find(spelling, accuracy)
                     if line and (accuracy < min_accuracy or min_accuracy == -1):
                         min_accuracy = accuracy
-                        market_match = market
-                        return market_match
+                        merchant_name_match = merchant_name
+                        return merchant_name_match
 
+        # not found
         return market_match
 
     def parse_sum(self):
@@ -190,7 +256,8 @@ class Receipt(object):
             Convert Receipt object to json
         """
         object_data = {
-            "market": self.market,
+            "merchant_name": self.merchant_name,
+            "abn": self.merchant_company_reg_no,
             "date": self.date,
             "sum": self.sum,
             "items": self.items,

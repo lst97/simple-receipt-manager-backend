@@ -49,7 +49,7 @@ def run():
             time.sleep(3)
 
         else:
-            LOGGER.INFO("api exit - SUCCESS")
+            LOGGER.info("api exit - SUCCESS")
             break
 
 
