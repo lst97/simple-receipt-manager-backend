@@ -10,25 +10,47 @@ results_as_json: false
 
 # Market names roughly ordered by likelihood.
 # Can contain market locations for fuzzy parsing
-markets:
+merchant_name:
   Costco:
+    - Costco
     - costco
     - COsvco
     - cOstco
     - c0stco
     - cO2tco
 
+merchant_company_reg_no_keys:
+  - ABN
+  - A.B.N
+  - abn
+  - a.b.n
+
 # Sum keys roughly ordered by likelyhood.
 sum_keys:
   - total
   - sum
 
+phone_keys:
+  - Tel
+  - Phone
+  - PH
+  - Ph
+  - ph
+  - tel
+  - phone
+  - teI
+  - phOne
+  - te1
+  - ph0ne
+  - teL
+
 ignore_keys:
-  - mwst
   - kg x
-  - stkx
-  - stk
-  - zw-summe
+  - z
+  - \
+
+phone_format: '((\+61\s?)?(\((0|02|03|04|07|08)\))?)?\s?\d{1,4}\s?\d{1,4}\s?\d{0,4}'
+abn_format: '(\d *?){11}'
 
 sum_format: '\d+(\.\s?|,\s?|[^a-zA-Z\d])\d{2}'
 
@@ -37,3 +59,5 @@ item_format_metro: '[0-9]\s(.*?)\d.()((\d|\d{2})(\,|\.)\d{1,2})\s([A|a]|[B|b])'
 
 # Matches dates like 19.08.15 and 19.08.2015
 date_format: '((\d{2}\.\d{2}\.\d{2,4})|(\d{2,4}\/\d{2}\/\d{2})|(\d{2}\/\d{2}\/\d{4}))'
+# For dates 01/01/1900 (or 1/1/1900) through 12/31/2099
+date_format2: '(0?[1-9]|1[0-2])[\/](0?[1-9]|[12]\d|3[01])[\/](19|20)\d{2}'

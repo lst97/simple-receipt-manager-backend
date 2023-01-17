@@ -9,10 +9,14 @@ from os.path import join, dirname
 import logging
 import subprocess
 import threading
-from .receipt_parser.core import parse
+import requests
+from bs4 import BeautifulSoup as BSHTML
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'this is a secret key'
+app.config['CORS_HEADERS'] = 'Content-Type'
+
 CORS(app)
 
 LOGGER = logging.getLogger(__name__)
@@ -26,9 +30,10 @@ def execute_receipt_parser():
     def receipt_parser_thread(on_exit):
         LOGGER.info("Create Receipt Parser subprocess.")
         try:
-            subprocess.run(
-                ["python3", "./src/api/receipt_parser/receipt_parser.py"],)
+            console_output = subprocess.run(
+                ["python3", "./src/api/receipt_parser/receipt_parser.py"], capture_output=False)
 
+            LOGGER.info(console_output.stdout)
         except (OSError, subprocess.CalledProcessError) as exception:
             LOGGER.error('Exception occured: ' + str(exception))
             LOGGER.info('Receipt Parser failed to complete it execution.')
@@ -125,8 +130,35 @@ def recipt():
         return "TODO"
 
 
-def run():
-    # for DEBUG
-    execute_receipt_parser()
+# For testing
+@app.route('/upload/parse', methods=['GET'])
+def parse_receipt():
+    if request.method == "GET":
 
+        execute_receipt_parser()
+        # db = establish_connection()
+
+        return "TODO"
+
+
+@app.route('/external/abn/search', methods=['GET'])
+def abn_query():
+    if request.method == "GET":
+        arg = request.args.get('id')
+        if arg != "":
+            resp = requests.get('{0}?id={1}'.format(
+                os.getenv('ABN_DATA_API_URL'), arg))
+
+            resp_html = resp.text
+            soup = BSHTML(resp_html, 'html.parser')
+
+            merchant_name = {"merchant_name": ""}
+            if len(soup.find_all(alt="error")) == 0 and len(soup.find_all(alt="Error")) == 0:
+                merchant_name["merchant_name"] = soup.find_all(
+                    itemprop="legalName")[0].string
+
+            return json.dumps(merchant_name, default=json_util.default)
+
+
+def run():
     app.run(debug=False)
