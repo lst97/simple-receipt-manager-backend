@@ -183,8 +183,11 @@ class Receipt(object):
             if match:
                 # it usually containe time in the same line
                 if self.time == "":
-                    self.time = re.search(
-                        self.config.time_format, line).group(0) or ""
+                    self.time = re.search(self.config.time_format, line)
+                    if self.time == None:
+                        self.time = ""
+                    else:
+                        self.time = self.time.group(0)
 
                 # validate date using the dateutil library (see: https://dateutil.readthedocs.io/)
                 date_str = match.group(0)

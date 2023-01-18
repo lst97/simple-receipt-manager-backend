@@ -119,8 +119,8 @@ def ocr_receipts(config, receipt_files):
     # stats = defaultdict(int)
 
     table_data = [
-        ['Path', 'Merchant Name', "Merchant Address", "Merchant Phone", "ABN", "Receipt No.", "Date", "Time", "Items", "Currency", "Total",
-            "Subtotal", "Tax", "Payment Method", "Payment Details", "Credit Card Type", "Credit Card Number", "OCR Text", "OCR Confidence"],
+        ['merchant_name', "merchant_phone", "ABN",
+            "date", "time", "total", "payment_method"],
     ]
 
     if config.results_as_json:
@@ -139,41 +139,20 @@ def ocr_receipts(config, receipt_files):
                 item_list += ' '.join(item) + "\n"
 
             table_data.append(
-                [receipt_path, receipt.merchant_name,
-                    receipt.date, item_list, receipt.total]
+                [receipt.merchant_name, receipt.merchant_phone, receipt.merchant_company_reg_no,
+                    receipt.date, receipt.time, receipt.total, receipt.payment_method]
             )
 
-            # self.config = config
-            # self.merchant_name = None
-            # self.merchant_address = None
-            # self.merchant_phone = None
-            # self.merchant_company_reg_no = None
-            # self.country = None
-            # self.receipt_no = None
-            # self.date = None
-            # self.time = None
-            # self.items = []
-            # self.currency = None
-            # self.total = None
-            # self.subtotal = None
-            # self.tax = None
-            # self.payment_method = None
-            # self.payment_details = None
-            # self.credit_card_type = None
-            # self.credit_card_number = None
-            # self.ocr_text = raw
-            # self.ocr_confidence = None
+        receipts.append({"merchant_name": receipt.merchant_name, "merchant_phone": receipt.merchant_phone, "ABN": receipt.merchant_company_reg_no,
+                         "date": receipt.date, "time": receipt.time, "total": receipt.total, "payment_method": receipt.payment_method})
 
-            receipts.append({"merchant_name": receipt.merchant_name,
-                            "date": receipt.date, "total": receipt.total})
-
-            # stats["total"] += 1
-            # if receipt.market:
-            #     stats["market"] += 1
-            # if receipt.date:
-            #     stats["date"] += 1
-            # if receipt.sum:
-            #     stats["sum"] += 1
+        # stats["total"] += 1
+        # if receipt.market:
+        #     stats["market"] += 1
+        # if receipt.date:
+        #     stats["date"] += 1
+        # if receipt.sum:
+        #     stats["sum"] += 1
 
     table = SingleTable(table_data)
     LOGGER.info("Parser output:")
