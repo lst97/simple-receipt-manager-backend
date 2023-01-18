@@ -140,7 +140,7 @@ def ocr_receipts(config, receipt_files):
 
             table_data.append(
                 [receipt_path, receipt.merchant_name,
-                    receipt.date, item_list, receipt.sum]
+                    receipt.date, item_list, receipt.total]
             )
 
             # self.config = config
