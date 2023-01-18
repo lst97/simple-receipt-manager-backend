@@ -12,37 +12,43 @@ results_as_json: false
 # Can contain market locations for fuzzy parsing
 merchant_name:
   Costco:
-    - Costco
     - costco
-    - COsvco
+    - cOsvco
     - cOstco
     - c0stco
     - cO2tco
 
 merchant_company_reg_no_keys:
-  - ABN
-  - A.B.N
   - abn
   - a.b.n
 
 # Sum keys roughly ordered by likelyhood.
 sum_keys:
   - total
+  - totaI
   - sum
+  - Sum
+  - tOtal
 
 phone_keys:
-  - Tel
-  - Phone
-  - PH
-  - Ph
-  - ph
   - tel
   - phone
+  - ph
   - teI
   - phOne
   - te1
   - ph0ne
   - teL
+
+time_keys:
+  - time
+  - tlme
+  - vime
+
+payment_method_keys:
+  - visa debit
+  - eftpos
+  - eft
 
 ignore_keys:
   - kg x
@@ -51,13 +57,12 @@ ignore_keys:
 
 phone_format: '((\+61\s?)?(\((0|02|03|04|07|08)\))?)?\s?\d{1,4}\s?\d{1,4}\s?\d{0,4}'
 abn_format: '(\d *?){11}'
+# Matches dates DD/MM/YY (Australia sequence)
+numeric_date_format: '(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](20)\d{2}'
+string_date_format: '(0?[1-9]|[12]\d|3[01])([\s, .]){1,2}(JAN(UARY)?|FEB(RUARY)?|MAR(CH)?|APR(IL)?|MAY|JUN(E)?|JUL(Y)?|AUG(UST)?|SEP(TEMBER)?|OCT(OBER)?|NOV(EMBER)?|DEC(EMBER)?)([\s, .]){1,2}(20)\d{2}'
+time_format: '([0-1]?[0-9]|2[0-3])\s*:\s*[0-5][0-9]'
 
 sum_format: '\d+(\.\s?|,\s?|[^a-zA-Z\d])\d{2}'
 
 item_format: '([a-zA-Z].+)\s(-|)((\d|\d{2}),(\d{2}|\d{3}))\s'
 item_format_metro: '[0-9]\s(.*?)\d.()((\d|\d{2})(\,|\.)\d{1,2})\s([A|a]|[B|b])'
-
-# Matches dates like 19.08.15 and 19.08.2015
-date_format: '((\d{2}\.\d{2}\.\d{2,4})|(\d{2,4}\/\d{2}\/\d{2})|(\d{2}\/\d{2}\/\d{4}))'
-# For dates 01/01/1900 (or 1/1/1900) through 12/31/2099
-date_format2: '(0?[1-9]|1[0-2])[\/](0?[1-9]|[12]\d|3[01])[\/](19|20)\d{2}'

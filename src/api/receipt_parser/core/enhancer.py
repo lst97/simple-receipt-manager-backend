@@ -26,18 +26,22 @@ from scipy.ndimage import interpolation as inter
 from os.path import join, dirname
 import logging
 import coloredlogs
+import imagehash
 
 from .receipt import Receipt
-from .config import read_config
+from .config import read_config, read_image_hashs, write_image_hashs
 
 IMAGE_FOLDER = "data/img"
 TMP_FOLDER = "data/tmp"
 TEXT_FOLDER = "data/txt"
 
-BASE_PATH = join(dirname(__file__), '../')
+BASE_PATH = dirname(dirname(__file__))
 INPUT_FOLDER = os.path.join(BASE_PATH, IMAGE_FOLDER)
 OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, TMP_FOLDER)
 OUTPUT_FOLDER = os.path.join(BASE_PATH, TEXT_FOLDER)
+
+CONFIG_YML_PATH = 'config/config.yml'
+CONFIG_HASHS_PATH = 'config/.hashs.json'
 
 ORANGE = '\033[33m'
 RESET = '\033[0m'
@@ -268,6 +272,15 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
     return Receipt(config=config, raw=raw)
 
 
+def check_hash(img_path, hash_str, img_hashs):
+    for item in img_hashs["records"]:
+        if item['hash'] == hash_str:
+            LOGGER.info(img_path + " already enhanced.")
+            LOGGER.info("Process next image. (SKIP)")
+            return True
+    return False
+
+
 def run():
     coloredlogs.install(level='DEBUG')
     coloredlogs.install(level='DEBUG', logger=LOGGER)
@@ -275,7 +288,10 @@ def run():
     prepare_folders()
 
     config = read_config(config=join(
-        dirname(__file__), '../config/config.yml'))
+        dirname(dirname(__file__)), CONFIG_YML_PATH))
+
+    img_hashs = read_image_hashs(config=join(
+        dirname(dirname(__file__)), CONFIG_HASHS_PATH))
 
     images = list(find_images(INPUT_FOLDER))
     LOGGER.info(ORANGE + '~: ' + RESET + 'Found: ' + ORANGE + str(len(images)
@@ -299,6 +315,14 @@ def run():
 
         if i != 1:
             print()
+
+        LOGGER.info("Start imagehash for compararson")
+        img_hash_str = str(imagehash.average_hash(Image.open(input_path)))
+        if check_hash(image, img_hash_str, img_hashs) == True:
+            i = i + 1
+            continue
+        LOGGER.info("Hash not found.")
+
         LOGGER.info(ORANGE + '~: ' + RESET + 'Process image (' + ORANGE + str(i) + '/' + str(
             len(images)) + RESET + ') : ' + input_path.split('/')[-1] + RESET)
 
@@ -308,6 +332,8 @@ def run():
 
         run_tesseract(tmp_path, out_path, config.language)
 
+        write_image_hashs(image, img_hash_str, img_hashs, config=join(
+            dirname(dirname(__file__)), CONFIG_HASHS_PATH))
         i = i + 1
 
     LOGGER.info("Enhancer exit.")

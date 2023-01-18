@@ -99,19 +99,22 @@ class Receipt(object):
 
         self.merchant_phone = self.parse_phone()
 
-        self.receipt_no = ""  # TODO
-        self.date = ""
-        self.time = ""
+        self.receipt_no = ""  # implement later, kind of complicated
+        self.date = self.parse_date()
+
+        if self.time == "":
+            self.time = self.parse_time()
+
         self.items = []  # implement later, kind of complicated
-        self.currency = ""
-        self.total = ""
-        self.subtotal = ""
-        self.tax = ""
-        self.payment_method = ""
-        self.payment_details = ""
-        self.credit_card_type = ""
-        self.credit_card_number = ""
-        self.ocr_confidence = ""
+        self.currency = ""  # implement later, not necessary
+        self.total = self.parse_total()
+        self.subtotal = ""  # implement later, not necessary
+        self.tax = ""  # implement later, not necessary
+        self.payment_method = self.parse_payment_method()
+        self.payment_details = ""  # implement later, not necessary
+        self.credit_card_type = ""  # implement later, not necessary
+        self.credit_card_number = ""  # implement later, not necessary
+        self.ocr_confidence = ""  # implement later, need algorithm
 
     def fuzzy_find(self, keyword, accuracy=0.6):
         """
@@ -135,10 +138,13 @@ class Receipt(object):
         for abn_key in self.config.merchant_company_reg_no_keys:
             abn_line = self.fuzzy_find(abn_key)
             if abn_line:
-                abn_line = abn_line.replace(' ', '')
-                abn_line = abn_line.replace('\n', '')
-
+                # abn_line = abn_line.replace(' ', '').replace('\n', '')
+                abn_line = re.sub('[ \n]', '', abn_line)
                 abn_number = re.search(self.config.abn_format, abn_line)
+
+                # TODO
+                # useABN checksum algorithm.
+
                 if abn_number:
                     return abn_number.group(0)
         return ""
@@ -147,12 +153,21 @@ class Receipt(object):
         for phone_key in self.config.phone_keys:
             phone_line = self.fuzzy_find(phone_key)
             if phone_line:
-                phone_line = phone_line.replace('\n', '')
+                # phone_line = phone_line.replace('\n', '')
+                phone_line = re.sub('[\n]', '', phone_line)
 
                 phone_number = re.search(self.config.phone_format, phone_line)
                 if phone_number:
                     return phone_number.group(0)
         return ""
+
+    def parse_time(self):
+        for line in self.lines:
+            line = re.sub('[!\n ]', '', line)
+            match = re.search(self.config.time_format, line)
+
+            if match:
+                return match.group(0)
 
     def parse_date(self):
         """
@@ -161,17 +176,34 @@ class Receipt(object):
         """
 
         for line in self.lines:
-            match = re.search(self.config.date_format, line)
-            if match:  # We"re happy with the first match for now
+            line = re.sub('[!\n]', '', line.upper())
+            match = re.search(self.config.numeric_date_format, line) or re.search(
+                self.config.string_date_format, line)
+
+            if match:
+                # it usually containe time in the same line
+                if self.time == "":
+                    self.time = re.search(self.config.time_format, line)
+                    if self.time == None:
+                        self.time = ""
+                    else:
+                        self.time = self.time.group(0)
+
                 # validate date using the dateutil library (see: https://dateutil.readthedocs.io/)
-                date_str = match.group(1)
-                date_str = date_str.replace(" ", "")
+                date_str = match.group(0)
+                date_str = re.sub('[ ]', '', date_str)
                 try:
-                    dateutil.parser.parse(date_str)
+                    date_str = dateutil.parser.parse(
+                        date_str, ignoretz=True).date().strftime("%d/%m/%Y")
                 except ValueError:
-                    return None
+                    return ""
 
                 return date_str
+
+    def parse_payment_method(self):
+        for payment_method_key in self.config.payment_method_keys:
+            payment_method_line = self.fuzzy_find(payment_method_key)
+        return "CASH" if payment_method_line else "CARD"
 
     def parse_items(self):
         items = []
@@ -233,7 +265,7 @@ class Receipt(object):
         # not found
         return market_match
 
-    def parse_sum(self):
+    def parse_total(self):
         """
         :return: str
             Parses sum data
