@@ -155,7 +155,7 @@ def run_tesseract(input_file, output_file, language="eng"):
 
         with Image.open(transfer) as img:
             image_data = pytesseract.image_to_string(
-                img, lang=language, timeout=60, config="--psm 6")
+                img, lang=language, timeout=60, config="--psm 1")
 
             out = open(output_file, "w", encoding='utf-8')
             out.write(image_data)
