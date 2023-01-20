@@ -5,16 +5,17 @@ import logging
 LOGGER = logging.getLogger("receipt_parser.driver")
 
 
-def run():
+def run(request_id="TEST"):
     LOGGER.info("Start enhance images...")
     enhancer.run()
     # read OCR text
     LOGGER.info("Start parsing OCR data...")
-    parsed_result = parser.run()
+    receipts = parser.run()
     LOGGER.info("Parsing DONE.")
 
-    pass
     # upload result to MongoDB
+
+    return request_id
 
 
 if __name__ == "__main__":

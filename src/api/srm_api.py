@@ -11,15 +11,19 @@ import subprocess
 import threading
 import requests
 from bs4 import BeautifulSoup as BSHTML
+import base64
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'this is a secret key'
 app.config['CORS_HEADERS'] = 'Content-Type'
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32 MB
 
 CORS(app)
 
 LOGGER = logging.getLogger(__name__)
+HOST_IP = 'localhost'
+HOST_PORT = 5000
 
 
 def on_exit():
@@ -121,24 +125,83 @@ def receipts():
         return "TODO"
 
 
-@app.route('/<group>/recipts/<id>', methods=['POST', 'GET'])
-def recipt():
+@app.route('/<group>/recipts/<string:id>', methods=['POST', 'GET'])
+def recipt(id):
     if request.method == "GET":
 
         db = establish_connection()
 
         return "TODO"
 
-
 # For testing
-@app.route('/upload/parse', methods=['GET'])
-def parse_receipt():
-    if request.method == "GET":
 
+
+upload_requests = {"records": []}
+
+
+def search_upload_requests(request_id):
+    idx = 0
+    for record in upload_requests["records"]:
+        if record["request_id"] == request_id:
+            return idx
+        idx += 1
+    return -1
+
+
+@app.route('/test/upload', methods=['POST'])
+def handle_upload():
+    # how much file expected to be upload for this request_id
+    total_files = int(request.form.get('total_files'))
+    request_id = request.form.get('request_id')
+    image_file = request.files.get("file")
+    image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+    record_index = search_upload_requests(request_id)
+    if record_index == -1:
+        upload_requests["records"].append(
+            {"request_id": request_id, "total_files": total_files, "remaining": total_files, "files": {"file_name": image_file.filename, "base64": image_base64}})
+
+    upload_requests["records"][record_index]["remaining"] -= 1
+    try:
+        with open(join(dirname(__file__), 'receipt_parser/data/img/{0}'.format(image_file.filename)), "wb") as stream:
+            stream.write(base64.b64decode(image_base64))
+    except Exception as e:
+        LOGGER.error(e)
+
+    # TODO: Insert Parsed Data to DB.
+    # Delete Parsed Files.
+    if upload_requests["records"][record_index]["remaining"] == 0:
+        # delete the upload_requests with this request_id
         execute_receipt_parser()
-        # db = establish_connection()
+        return json.dumps({"response": "execute_receipt_parser()"}, default=json_util)
 
-        return "TODO"
+    return json.dumps({"response": {"request_id": request_id, "total_files": total_files, "remaining": total_files, "files": {"file_name": image_file.filename, "base64": image_base64}}}, default=json_util)
+
+
+@app.route('/test/parse/<string:request_id>', methods=['GET'])
+def parse_receipt(request_id):
+    if request.method == "GET":
+        # execute_receipt_parser()
+        db = establish_connection()
+        parse_queue_collection = db.parse_queue
+        cursor = parse_queue_collection.find({"request_id": request_id})
+        response = []
+        for doc in cursor:
+            response.append(doc)
+        return json.dumps(response, default=json_util.default)
+
+# For Testing
+
+
+# @app.route('test/upload/parse', methods=['GET'])
+# def parse_receipt():
+#     if request.method == "GET":
+
+#         execute_receipt_parser()
+#         # db = establish_connection()
+
+#         return "TODO"
+
+# # use external API
 
 
 @app.route('/external/abn/search', methods=['GET'])
@@ -161,4 +224,4 @@ def abn_query():
 
 
 def run():
-    app.run(debug=False)
+    app.run(host=HOST_IP, debug=False)
