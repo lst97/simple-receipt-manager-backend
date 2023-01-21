@@ -14,7 +14,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import io
 import os
 
 import cv2
@@ -104,33 +103,51 @@ def rotate_image(input_file, output_file, angle=90):
 
 
 def deskew_image(image, delta=1, limit=5):
+    """
+    Rotate image to correct skew angle
+    :param image: numpy.ndarray
+        Image to be deskewed
+    :param delta: int
+        Increment of angle to check in each iteration
+    :param limit: int
+        Maximum angle to check for skew
+    :return: numpy.ndarray
+        Deskewed image
+    """
+    # Helper function to calculate score of image at a certain angle
     def determine_score(arr, angle):
         data = inter.rotate(arr, angle, reshape=False, order=0)
         histogram = np.sum(data, axis=1)
         score = np.sum((histogram[1:] - histogram[:-1]) ** 2)
         return histogram, score
 
+    # Convert the image to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Apply Otsu thresholding to binarize the image
     thresh = cv2.threshold(
         gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
     scores = []
+    # Try rotating the image by different angles in the range (-limit, limit+delta)
     angles = np.arange(-limit, limit + delta, delta)
     for angle in angles:
         histogram, score = determine_score(thresh, angle)
         scores.append(score)
 
+    # Get the angle that resulted in the highest score
     best_angle = angles[scores.index(max(scores))]
 
     (h, w) = image.shape[:2]
+    # Get the center of the image
     center = (w // 2, h // 2)
+    # Get the rotation matrix for rotating the image by the best angle
     M = cv2.getRotationMatrix2D(center, best_angle, 1.0)
 
-    print(ORANGE + '\t~: ' + RESET + 'Deskew image by: ' +
-          str(best_angle) + ' angle' + RESET)
+    print(f"Deskew image by: {best_angle} angle")
 
-    rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC,
-                             borderMode=cv2.BORDER_REPLICATE)
+    # Rotate the image using the rotation matrix
+    rotated = cv2.warpAffine(
+        image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
     return rotated
 
@@ -149,18 +166,17 @@ def run_tesseract(input_file, output_file, language="eng"):
     print(ORANGE + '\t~: ' + RESET + 'Parse image at: ' + input_file + RESET)
     print(ORANGE + '\t~: ' + RESET + 'Write result to: ' + output_file + RESET)
 
-    with io.BytesIO() as transfer:
-        with WandImage(filename=input_file) as img:
-            img.save(transfer)
-
-        with Image.open(transfer) as img:
+    # Open the input file as a binary stream
+    with open(input_file, 'rb') as f:
+        # Use WandImage to open the file as an image
+        with WandImage(file=f) as img:
+            # Use pytesseract to perform OCR on the image
             image_data = pytesseract.image_to_string(
-                img, lang=language, timeout=60, config="--psm 1")
-
-            out = open(output_file, "w", encoding='utf-8')
-            out.write(image_data)
-            out.close()
-    print(ORANGE + '\t~: ' + RESET + "DONE" + RESET)
+                img, lang=language)
+            # Open the output file in write mode and write the OCR text to it
+            with open(output_file, 'w', encoding='utf-8') as output:
+                output.write(image_data)
+    print("OCR text written to: ", output_file)
 
 
 def rescale_image(img):
@@ -176,37 +192,60 @@ def grayscale_image(img):
 
 
 def remove_noise(img):
+    # Apply morphological operations to remove noise from the image
     kernel = np.ones((1, 1), np.uint8)
-    img = cv2.dilate(img, kernel, iterations=1)
-    img = cv2.erode(img, kernel, iterations=1)
+    img = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
+    img = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
 
     print(ORANGE + '\t~: ' + RESET +
           'Applying gaussianBlur and medianBlur' + RESET)
 
-    img = cv2.threshold(cv2.GaussianBlur(img, (5, 5), 0),
-                        150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    img = cv2.threshold(cv2.bilateralFilter(img, 5, 75, 75),
-                        0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    img = cv2.adaptiveThreshold(cv2.bilateralFilter(img, 9, 75, 75), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                cv2.THRESH_BINARY, 31, 2)
+    # Apply Gaussian and median blur to smooth the image
+    img = cv2.GaussianBlur(img, (5, 5), 0)
+    img = cv2.medianBlur(img, 5)
+
+    # removed cv2.bilateralFilter() as it is not necessary in this case and it increase the complexity and time consumed.
+
+    # Apply adaptive thresholding to binarize the image
+    img = cv2.adaptiveThreshold(
+        img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2)
 
     return img
 
 
 def remove_shadows(img):
+    """
+    Remove shadows from the image by subtracting the background from the image
+    :param img: numpy array, the image to process
+    :return: numpy array, the processed image
+    """
+    # Split the image into its RGB planes
     rgb_planes = cv2.split(img)
 
+    # Initialize the result planes and result norm planes lists
     result_planes = []
     result_norm_planes = []
+
+    # Iterate over each plane
     for plane in rgb_planes:
+        # Dilate the plane to remove small dark spots
         dilated_img = cv2.dilate(plane, np.ones((7, 7), np.uint8))
+
+        # Use median blur to smooth the image
         bg_img = cv2.medianBlur(dilated_img, 21)
+
+        # Subtract the background from the image
         diff_img = 255 - cv2.absdiff(plane, bg_img)
+
+        # Normalize the image to the range of 0-255
         norm_img = cv2.normalize(
             diff_img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
+
+        # Append the processed image to the result planes and result norm planes lists
         result_planes.append(diff_img)
         result_norm_planes.append(norm_img)
 
+    # Merge the processed planes into a single image
     result = cv2.merge(result_planes)
 
     return result
@@ -337,7 +376,3 @@ def run():
         i = i + 1
 
     LOGGER.info("Enhancer exit.")
-
-
-if __name__ == '__main__':
-    run()

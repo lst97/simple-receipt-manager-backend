@@ -1,17 +1,19 @@
-from flask import Flask, request
-import pymongo
+import base64
+from .srm_db import establish_connection
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 from bson import json_util, ObjectId
 from dotenv import load_dotenv
 import os
 from os.path import join, dirname
+import pymongo
 import logging
 import subprocess
 import threading
 import requests
 from bs4 import BeautifulSoup as BSHTML
-import base64
+
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
@@ -30,12 +32,19 @@ def on_exit():
     LOGGER.info("on_exit() callback EXECUTED.")
 
 
-def execute_receipt_parser():
-    def receipt_parser_thread(on_exit):
-        LOGGER.info("Create Receipt Parser subprocess.")
+def execute_receipt_parser(request_id) -> threading.Thread:
+    """
+    Executes the receipt parser script as a separate thread, and 
+    calls the provided on_exit callback when the script exits.
+    """
+    def receipt_parser_thread():
+        """
+        Thread function that runs the receipt parser script and captures its output.
+        """
+        LOGGER.info("Creating Receipt Parser subprocess.")
         try:
             console_output = subprocess.run(
-                ["python3", "./src/api/receipt_parser/receipt_parser.py"], capture_output=False)
+                ["python3", "./src/api/receipt_parser/receipt_parser.py", request_id], capture_output=False)
 
             LOGGER.info(console_output.stdout)
         except (OSError, subprocess.CalledProcessError) as exception:
@@ -45,23 +54,11 @@ def execute_receipt_parser():
         else:
             # notify API to find the result in data/txt
             on_exit()
-
         return True
 
-    parser_thread = threading.Thread(
-        target=receipt_parser_thread, args=(on_exit,))
+    parser_thread = threading.Thread(target=receipt_parser_thread)
     parser_thread.start()
-
     return parser_thread
-
-
-def establish_connection():
-    # Connect to the MongoDB server
-    client = pymongo.MongoClient(
-        "mongodb+srv://{0}:{1}@{2}/test".format(os.getenv('ADMIN_NAME'), os.getenv('ADMIN_PASSWORD'), os.getenv('DB_CONNECTION_STRING')))
-
-    # Select the database
-    return client["simple-receipt-manager"]
 
 
 @app.route('/groups', methods=['POST', 'GET'])
@@ -70,12 +67,9 @@ def groups():
 
     if request.method == "GET":
         groups_collection = db.groups
-
-        # get all documents in the collection
         cursor = groups_collection.find()
 
-        # convert cursor to JSON string
-        return json.dumps(list(cursor), default=json_util.default)
+        return json_util.dumps(cursor)
 
 
 @app.route('/group_records/<string:group_id>', methods=['GET'])
@@ -84,38 +78,46 @@ def group_records(group_id):
         db = establish_connection()
         groups_collection = db.groups
 
-        cursor = groups_collection.find(
+        # Find the group with the matching id and only return the "records" field
+        group = groups_collection.find_one(
             {"_id": ObjectId(group_id)}, {"records": 1})
 
-        records = []
-        for doc in cursor:
-            records.append(doc)
-
+        # Initialize an empty list for response
         response = []
-        for record in records[0]["records"]:
-            record_obj = {}
-            record_obj["merchant_name"] = record["receipts"][0]["merchant_name"]
-            record_obj["receipt_no"] = record["receipts"][0]["receipt_no"]
-            record_obj["date"] = record["receipts"][0]["date"]
-            record_obj["payer"] = record["payer"]
-            record_obj["total"] = record["receipts"][0]["total"]
-            record_obj["payment_method"] = record["receipts"][0]["payment_method"]
-            record_obj["share_with"] = record["share_with"]
+
+        # Iterate through the records
+        for record in group["records"]:
+            record_obj = {
+                "merchant_name": record["receipts"][0]["merchant_name"],
+                "receipt_no": record["receipts"][0]["receipt_no"],
+                "date": record["receipts"][0]["date"],
+                "payer": record["payer"],
+                "total": record["receipts"][0]["total"],
+                "payment_method": record["receipts"][0]["payment_method"],
+                "share_with": record["share_with"]
+            }
+            # Append the record object to the response list
             response.append(record_obj)
 
-        return json.dumps(response, default=json_util.default)
+        return jsonify(response)
 
 
 @app.route('/groups_info', methods=['GET'])
 def groups_info():
-    if request.method == "GET":
-        db = establish_connection()
-        groups_collection = db.groups
+    if request.method != "GET":
+        return jsonify({'error': 'Invalid request method'}), 400
 
-        cursor = groups_collection.find({}, {"name": 1}).sort([
-            ('group_number', pymongo.ASCENDING)])
+    # Connect to the database
+    db = establish_connection()
+    groups_collection = db.groups
 
-        return json.dumps(list(cursor), default=json_util.default)
+    # Retrieve the name of all groups, sorted by group_number
+    cursor = groups_collection.find({}, {"name": 1}).sort(
+        [('group_number', pymongo.ASCENDING)])
+
+    # Convert the cursor to a list and serialize it as JSON
+
+    return json_util.dumps(cursor)
 
 
 @app.route('/<group>/receipts', methods=['POST', 'GET'])
@@ -140,87 +142,130 @@ upload_requests = {"records": []}
 
 
 def search_upload_requests(request_id):
-    idx = 0
-    for record in upload_requests["records"]:
+    for i, record in enumerate(upload_requests["records"]):
         if record["request_id"] == request_id:
-            return idx
-        idx += 1
+            return i
     return -1
 
 
-@app.route('/test/upload', methods=['POST'])
-def handle_upload():
-    # how much file expected to be upload for this request_id
+@app.route('/test/upload/<string:group_id>', methods=['POST'])
+def handle_upload(group_id):
+    # how many files are expected to be uploaded for this request_id
     total_files = int(request.form.get('total_files'))
     request_id = request.form.get('request_id')
     image_file = request.files.get("file")
+
+    # convert image to base64
     image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+
+    # check if request_id already exists in upload_requests
     record_index = search_upload_requests(request_id)
+
+    # if request_id does not exist, create a new record
     if record_index == -1:
         upload_requests["records"].append(
-            {"request_id": request_id, "total_files": total_files, "remaining": total_files, "files": {"file_name": image_file.filename, "base64": image_base64}})
+            {"request_id": request_id, "total_files": total_files, "remaining": total_files, "files": []})
+
+        # set record_index to the last element
+        record_index = len(upload_requests["records"]) - 1
 
     upload_requests["records"][record_index]["remaining"] -= 1
+
+    # save image file to disk
     try:
-        with open(join(dirname(__file__), 'receipt_parser/data/img/{0}'.format(image_file.filename)), "wb") as stream:
+        with open(join(dirname(__file__), f'receipt_parser/data/img/{image_file.filename}'), "wb") as stream:
             stream.write(base64.b64decode(image_base64))
     except Exception as e:
         LOGGER.error(e)
 
-    # TODO: Insert Parsed Data to DB.
-    # Delete Parsed Files.
+    # append the file name to the current record
+    upload_requests["records"][record_index]["files"].append({
+        "file_name": image_file.filename
+    })
+
+    # if no remaining files, execute receipt parser
     if upload_requests["records"][record_index]["remaining"] == 0:
-        # delete the upload_requests with this request_id
-        execute_receipt_parser()
-        return json.dumps({"response": "execute_receipt_parser()"}, default=json_util)
 
-    return json.dumps({"response": {"request_id": request_id, "total_files": total_files, "remaining": total_files, "files": {"file_name": image_file.filename, "base64": image_base64}}}, default=json_util)
-
-
-@app.route('/test/parse/<string:request_id>', methods=['GET'])
-def parse_receipt(request_id):
-    if request.method == "GET":
-        # execute_receipt_parser()
+        # add records to parse_queue db
         db = establish_connection()
-        parse_queue_collection = db.parse_queue
-        cursor = parse_queue_collection.find({"request_id": request_id})
-        response = []
-        for doc in cursor:
-            response.append(doc)
-        return json.dumps(response, default=json_util.default)
+        parse_queue = db["parse_queue"]
+        data = {
+            "request_id": upload_requests["records"][record_index]["request_id"],
+            "group_id": group_id,
+            "files":  upload_requests["records"][record_index]["files"],
+            "success": False
+        }
+        parse_queue.insert_one(data)
 
-# For Testing
+        parser_thread = execute_receipt_parser(request_id)
+        parser_thread.join()
+        # TODO: delete the upload_requests with this request_id
+        # TODO: add result to group
+        # TODO: return receipts
+    return jsonify({"request_id": request_id, "total_files": total_files, "remaining": total_files})
 
 
-# @app.route('test/upload/parse', methods=['GET'])
-# def parse_receipt():
-#     if request.method == "GET":
+@app.route('/internal/parse/<string:request_id>', methods=['GET', 'POST'])
+def handle_parse(request_id):
+    if request.method == "GET":
+        # TODO: GET parse_queue_id from DB.
+        db = establish_connection()
+        parse_queue = db["parse_queue"]
+        cursor = parse_queue.find_one(
+            {"request_id": request_id}, {"files": 1, "_id": 0})
 
-#         execute_receipt_parser()
-#         # db = establish_connection()
+        return json_util.dumps(cursor)
+        # parse_queue_collection = db.parse_queue
+        # cursor = parse_queue_collection.find({"request_id": request_id})
+        # response = []
+        # for doc in cursor:
+        #     response.append(doc)
+        # return json.dumps(response, default=json_util.default)
 
-#         return "TODO"
+    if request.method == 'POST':
+        pass
+        # parse DONE
+        # For Testing
 
-# # use external API
+        # @app.route('test/upload/parse', methods=['GET'])
+        # def parse_receipt():
+        #     if request.method == "GET":
+
+        #         execute_receipt_parser()
+        #         # db = establish_connection()
+
+        #         return "TODO"
+
+        # # use external API
 
 
 @app.route('/external/abn/search', methods=['GET'])
 def abn_query():
     if request.method == "GET":
-        arg = request.args.get('id')
-        if arg != "":
-            resp = requests.get('{0}?id={1}'.format(
-                os.getenv('ABN_DATA_API_URL'), arg))
+        # Get the 'id' parameter from the query string
+        abn_id = request.args.get('id')
+        # Check if the 'id' parameter is not empty
+        if not abn_id:
+            return json.dumps({'error': 'No ABN id provided'})
 
-            resp_html = resp.text
-            soup = BSHTML(resp_html, 'html.parser')
+        # Make a GET request to the ABN Data API using the 'id' parameter
+        resp = requests.get('{0}?id={1}'.format(
+            os.getenv('ABN_DATA_API_URL'), abn_id))
 
-            merchant_name = {"merchant_name": ""}
-            if len(soup.find_all(alt="error")) == 0 and len(soup.find_all(alt="Error")) == 0:
-                merchant_name["merchant_name"] = soup.find_all(
-                    itemprop="legalName")[0].string
+        # Get the response text and parse it using BeautifulSoup
+        resp_html = resp.text
+        soup = BSHTML(resp_html, 'html.parser')
 
-            return json.dumps(merchant_name, default=json_util.default)
+        # Initialize an empty merchant_name dictionary
+        merchant_name = {"merchant_name": ""}
+        # Check if the 'error' or 'Error' alt attribute is not found in the response
+        if len(soup.find_all(alt="error")) == 0 and len(soup.find_all(alt="Error")) == 0:
+            # Get the legalName element and store it in the merchant_name dictionary
+            merchant_name["merchant_name"] = soup.find_all(
+                itemprop="legalName")[0].string
+
+        # Return the merchant_name dictionary as a JSON response
+        return jsonify(merchant_name)
 
 
 def run():
