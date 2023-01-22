@@ -13,6 +13,9 @@ import subprocess
 import threading
 import requests
 from bs4 import BeautifulSoup as BSHTML
+import imagehash
+from PIL import Image
+import io
 
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
@@ -32,6 +35,84 @@ def on_exit():
     LOGGER.info("on_exit() callback EXECUTED.")
 
 
+def insert_parse_queue(request_id, group_id, files):
+    db = establish_connection()
+    parse_queue = db["parse_queue"]
+    data = {
+        "request_id": request_id,
+        "group_id": group_id,
+        "files":  files,
+        "success": False
+    }
+    parse_queue.insert_one(data)
+
+
+def delete_parse_queue(request_id):
+    db = establish_connection()
+    parse_queue_collection = db["parse_queue"]
+    result = parse_queue_collection.find_one({"request_id": request_id})
+    parse_queue_collection.delete_one(result)
+
+
+def insert_image_hash(hash_str):
+    db = establish_connection()
+    parsed_images = db["parsed_images"]
+    parsed_images_id = parsed_images.find_one({}, {"_id": 1})
+    result = parsed_images.update_one(
+        parsed_images_id, {"$push": {"hashs": hash_str}})
+
+    # Check the result of the update
+    if result.modified_count <= 0:
+        LOGGER.error("Faile to add image hash into Database.")
+        return False
+
+    return True
+
+
+def find_image_hash(hash_str):
+    db = establish_connection()
+    parsed_images = db["parsed_images"]
+    cursor = parsed_images.find_one({"hashs": hash_str})
+    return cursor or json_util.dumps(cursor)
+
+
+def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_base64):
+    db = establish_connection()
+    groups = db["groups"]
+    record = {}
+    record["receipts"] = receipt
+    record["request_id"] = request_id
+    record["file_name"] = file_name
+    record["base64"] = image_base64
+    record["raw"] = ""  # NEED OCR RAW TXT DATA
+
+    result = groups.update_one(
+        {"_id": ObjectId(group_id)}, {"$push": {"records": record}})
+
+    # Check the result of the update
+    if result.modified_count <= 0:
+        LOGGER.error("Faile to add record into Database.")
+        return False
+
+    return True
+
+
+def get_files_from_api(request_id):
+    response = requests.get(
+        '{0}/internal/parse/{1}'.format(os.getenv("SRM_API_URL"), request_id))
+
+    files = []
+    if response.status_code == 200:
+        json_data = response.json()
+        for files_obj in json_data["files"]:
+            files.append(files_obj["file_name"])
+
+    return files
+
+
+parser_output_string = ""
+
+
 def execute_receipt_parser(request_id) -> threading.Thread:
     """
     Executes the receipt parser script as a separate thread, and 
@@ -41,12 +122,20 @@ def execute_receipt_parser(request_id) -> threading.Thread:
         """
         Thread function that runs the receipt parser script and captures its output.
         """
-        LOGGER.info("Creating Receipt Parser subprocess.")
+        LOGGER.info("Create Receipt Parser subprocess.")
         try:
-            console_output = subprocess.run(
-                ["python3", "./src/api/receipt_parser/receipt_parser.py", request_id], capture_output=False)
+            LOGGER.info("Get files info from API")
+            subprocess_command = ["python3",
+                                  "./src/api/receipt_parser/receipt_parser.py"]
+            files_name = get_files_from_api(request_id)
+            subprocess_command.append(str(len(files_name)))
+            for file_name in files_name:
+                subprocess_command.append(file_name)
 
-            LOGGER.info(console_output.stdout)
+            global parser_output_string
+            parser_output_string = subprocess.check_output(
+                subprocess_command, encoding='utf-8')
+
         except (OSError, subprocess.CalledProcessError) as exception:
             LOGGER.error('Exception occured: ' + str(exception))
             LOGGER.info('Receipt Parser failed to complete it execution.')
@@ -155,8 +244,17 @@ def handle_upload(group_id):
     request_id = request.form.get('request_id')
     image_file = request.files.get("file")
 
+    # image hash
+    image_bytes = image_file.read()
+    image = Image.open(io.BytesIO(image_bytes))
+    image_hash = str(imagehash.average_hash(image))
+
+    # DEBUG COMMENTED
+    # if find_image_hash(image_hash) is not None:
+    #     return jsonify({"message": "Duplicated image."})
+
     # convert image to base64
-    image_base64 = base64.b64encode(image_file.read()).decode('utf-8')
+    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
     # check if request_id already exists in upload_requests
     record_index = search_upload_requests(request_id)
@@ -178,27 +276,53 @@ def handle_upload(group_id):
     except Exception as e:
         LOGGER.error(e)
 
-    # append the file name to the current record
+    # append the file name and base64 to the current record
     upload_requests["records"][record_index]["files"].append({
-        "file_name": image_file.filename
+        "file_name": image_file.filename,
+        "base64": image_base64
     })
+
+    # upload image hash to db
+    if insert_image_hash(image_hash) is False:
+        # !!! user need to try the upload process again.
+        return jsonify({"message": "Fail to insert image hash."})
 
     # if no remaining files, execute receipt parser
     if upload_requests["records"][record_index]["remaining"] == 0:
 
         # add records to parse_queue db
-        db = establish_connection()
-        parse_queue = db["parse_queue"]
-        data = {
-            "request_id": upload_requests["records"][record_index]["request_id"],
-            "group_id": group_id,
-            "files":  upload_requests["records"][record_index]["files"],
-            "success": False
-        }
-        parse_queue.insert_one(data)
+        insert_parse_queue(
+            upload_requests["records"][record_index]["request_id"],
+            group_id,
+            upload_requests["records"][record_index]["files"],
+        )
+
+        # !!! protential thread safe issue
+        # upload_requests["records"] = []
 
         parser_thread = execute_receipt_parser(request_id)
         parser_thread.join()
+        receipts_json_string = parser_output_string.splitlines()[-1]
+        receipts = json.loads(receipts_json_string)
+
+        if len(receipts) != 0:
+            for receipt in receipts:
+                for record in upload_requests["records"]:
+                    is_found = False
+                    for image_file in record["files"]:
+                        if image_file["file_name"] == receipt['file_name']:
+                            image_base64 = image_file["base64"]
+                            is_found = True
+                            break
+                    if is_found is True:
+                        break
+
+                insert_record_by_group_id(
+                    receipt, group_id, request_id, receipt['file_name'], image_base64)
+            pass
+            # append base64 to receipts
+            # upload to db base on the group id
+        pass
         # TODO: delete the upload_requests with this request_id
         # TODO: add result to group
         # TODO: return receipts

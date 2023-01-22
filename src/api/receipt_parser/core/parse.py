@@ -14,8 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import os
 import time
 
 from terminaltables import SingleTable
@@ -33,38 +31,44 @@ RESET = '\033[0m'
 
 STATS_OUTPUT_FORMAT = "{0:10.0f},{1:d},{2:d},{3:d},{4:d},\n"
 
+TEMP_FOLDER = 'data/txt'
 
-def run():
-    config = read_config(join(
-        dirname(__file__), '../config/config.yml'))
 
-    receipt_files = get_files_in_folder(config.receipts_path)
+def run(files_name):
+    config_path = join(dirname(BASE_PATH), 'config/config.yml')
+    config = read_config(config_path)
+
+    receipt_files = []
+    for file_name in files_name:
+        receipt_files.append(
+            join(dirname(BASE_PATH), TEMP_FOLDER, file_name + '.txt'))
+
     return ocr_receipts(config, receipt_files)
 
 
-def get_files_in_folder(folder, include_hidden=False):
-    """
-    :param folder: str
-        Path to folder to list
-    :param include_hidden: bool
-        True iff you want also hidden files
-    :return: [] of str
-        List of full path of files in folder
-    """
+# def get_files_in_folder(folder, include_hidden=False):
+#     """
+#     :param folder: str
+#         Path to folder to list
+#     :param include_hidden: bool
+#         True iff you want also hidden files
+#     :return: [] of str
+#         List of full path of files in folder
+#     """
 
-    files = os.listdir(os.path.join(BASE_PATH, folder)
-                       )  # list content of folder
-    if not include_hidden:  # avoid files starting with "."
-        files = [
-            f for f in files if not f.startswith(".")
-        ]  #
+#     files = os.listdir(os.path.join(BASE_PATH, folder)
+#                        )  # list content of folder
+#     if not include_hidden:  # avoid files starting with "."
+#         files = [
+#             f for f in files if not f.startswith(".")
+#         ]  #
 
-    files = [
-        join(dirname(dirname(__file__)), "data/txt", f) for f in files
-    ]  # complete path
-    return [
-        f for f in files if os.path.isfile(f)
-    ]  # just files
+#     files = [
+#         join(dirname(dirname(__file__)), "data/txt", f) for f in files
+#     ]  # complete path
+#     return [
+#         f for f in files if os.path.isfile(f)
+#     ]  # just files
 
 
 def output_statistics(stats, write_file="data/stats.csv"):
