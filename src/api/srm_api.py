@@ -76,14 +76,17 @@ def find_image_hash(hash_str):
     return cursor or json_util.dumps(cursor)
 
 
-def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_base64):
+def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_base64, image_hash):
     db = establish_connection()
     groups = db["groups"]
     record = {}
-    record["receipts"] = receipt
+    record["receipts"] = [receipt]
     record["request_id"] = request_id
     record["file_name"] = file_name
+    record["payer"] = ''
+    record["share_with"] = ''
     record["base64"] = image_base64
+    record["hash"] = image_hash
     record["raw"] = ""  # NEED OCR RAW TXT DATA
 
     result = groups.update_one(
@@ -279,8 +282,8 @@ def handle_upload(group_id):
     # append the file name and base64 to the current record
     upload_requests["records"][record_index]["files"].append({
         "file_name": image_file.filename,
-        "base64": image_base64
-    })
+        "base64": image_base64,
+        "hash": image_hash})
 
     # upload image hash to db
     if insert_image_hash(image_hash) is False:
@@ -312,13 +315,14 @@ def handle_upload(group_id):
                     for image_file in record["files"]:
                         if image_file["file_name"] == receipt['file_name']:
                             image_base64 = image_file["base64"]
+                            image_hash = image_file['hash']
                             is_found = True
                             break
                     if is_found is True:
                         break
 
                 insert_record_by_group_id(
-                    receipt, group_id, request_id, receipt['file_name'], image_base64)
+                    receipt, group_id, request_id, receipt['file_name'], image_base64, image_hash)
             pass
             # append base64 to receipts
             # upload to db base on the group id

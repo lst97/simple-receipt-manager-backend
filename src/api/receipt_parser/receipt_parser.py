@@ -4,7 +4,6 @@ import logging
 import requests
 from dotenv import load_dotenv
 from os.path import join, dirname
-import os
 import sys
 import coloredlogs
 import json
@@ -22,7 +21,9 @@ def run(files_name):
     for idx, receipt in enumerate(receipts):
         receipt["file_name"] = files_name[idx]
 
-    sys.stdout.write(json.dumps(receipts).replace("\n", ""))
+    receipt["receipt_no"] = ''
+    receipt = [receipt]
+    sys.stdout.write(json.dumps(receipt).replace("\n", ""))
 
     LOGGER.info("Parsing DONE.")
 

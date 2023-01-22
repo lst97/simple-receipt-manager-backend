@@ -40,7 +40,6 @@ OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, TMP_FOLDER)
 OUTPUT_FOLDER = os.path.join(BASE_PATH, TEXT_FOLDER)
 
 CONFIG_YML_PATH = 'config/config.yml'
-CONFIG_HASHS_PATH = 'config/.hashs.json'
 
 ORANGE = '\033[33m'
 RESET = '\033[0m'
