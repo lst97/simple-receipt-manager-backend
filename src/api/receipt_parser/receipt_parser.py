@@ -1,7 +1,6 @@
 from core import enhancer
 from core import parse as parser
 import logging
-import requests
 from dotenv import load_dotenv
 from os.path import join, dirname
 import sys

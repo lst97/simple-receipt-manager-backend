@@ -1,9 +1,9 @@
 import base64
-from .srm_db import establish_connection
+from .srm_db import *
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
-from bson import json_util, ObjectId
+from bson import json_util
 from dotenv import load_dotenv
 import os
 from os.path import join, dirname
@@ -31,75 +31,6 @@ HOST_IP = 'localhost'
 HOST_PORT = 5000
 
 
-def on_exit():
-    LOGGER.info("on_exit() callback EXECUTED.")
-
-
-def insert_parse_queue(request_id, group_id, files):
-    db = establish_connection()
-    parse_queue = db["parse_queue"]
-    data = {
-        "request_id": request_id,
-        "group_id": group_id,
-        "files":  files,
-        "success": False
-    }
-    parse_queue.insert_one(data)
-
-
-def delete_parse_queue(request_id):
-    db = establish_connection()
-    parse_queue_collection = db["parse_queue"]
-    result = parse_queue_collection.find_one({"request_id": request_id})
-    parse_queue_collection.delete_one(result)
-
-
-def insert_image_hash(hash_str):
-    db = establish_connection()
-    parsed_images = db["parsed_images"]
-    parsed_images_id = parsed_images.find_one({}, {"_id": 1})
-    result = parsed_images.update_one(
-        parsed_images_id, {"$push": {"hashs": hash_str}})
-
-    # Check the result of the update
-    if result.modified_count <= 0:
-        LOGGER.error("Faile to add image hash into Database.")
-        return False
-
-    return True
-
-
-def find_image_hash(hash_str):
-    db = establish_connection()
-    parsed_images = db["parsed_images"]
-    cursor = parsed_images.find_one({"hashs": hash_str})
-    return cursor or json_util.dumps(cursor)
-
-
-def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_base64, image_hash):
-    db = establish_connection()
-    groups = db["groups"]
-    record = {}
-    record["receipts"] = [receipt]
-    record["request_id"] = request_id
-    record["file_name"] = file_name
-    record["payer"] = ''
-    record["share_with"] = ''
-    record["base64"] = image_base64
-    record["hash"] = image_hash
-    record["raw"] = ""  # NEED OCR RAW TXT DATA
-
-    result = groups.update_one(
-        {"_id": ObjectId(group_id)}, {"$push": {"records": record}})
-
-    # Check the result of the update
-    if result.modified_count <= 0:
-        LOGGER.error("Faile to add record into Database.")
-        return False
-
-    return True
-
-
 def get_files_from_api(request_id):
     response = requests.get(
         '{0}/internal/parse/{1}'.format(os.getenv("SRM_API_URL"), request_id))
@@ -113,12 +44,16 @@ def get_files_from_api(request_id):
     return files
 
 
+def on_exit():
+    LOGGER.info("on_exit() callback EXECUTED.")
+
+
 parser_output_string = ""
 
 
 def execute_receipt_parser(request_id) -> threading.Thread:
     """
-    Executes the receipt parser script as a separate thread, and 
+    Executes the receipt parser script as a separate thread, and
     calls the provided on_exit callback when the script exits.
     """
     def receipt_parser_thread():
@@ -155,43 +90,36 @@ def execute_receipt_parser(request_id) -> threading.Thread:
 
 @app.route('/groups', methods=['POST', 'GET'])
 def groups():
-    db = establish_connection()
-
     if request.method == "GET":
-        groups_collection = db.groups
-        cursor = groups_collection.find()
-
-        return json_util.dumps(cursor)
+        return get_groups()
 
 
 @app.route('/group_records/<string:group_id>', methods=['GET'])
 def group_records(group_id):
-    if request.method == "GET":
-        db = establish_connection()
-        groups_collection = db.groups
+    if request.method != "GET":
+        return jsonify({'error': 'Invalid request method'}), 400
 
-        # Find the group with the matching id and only return the "records" field
-        group = groups_collection.find_one(
-            {"_id": ObjectId(group_id)}, {"records": 1})
+    # Find the group with the matching id and only return the "records" field
+    group = get_group_records(group_id)
 
-        # Initialize an empty list for response
-        response = []
+    # Initialize an empty list for response
+    response = []
 
-        # Iterate through the records
-        for record in group["records"]:
-            record_obj = {
-                "merchant_name": record["receipts"][0]["merchant_name"],
-                "receipt_no": record["receipts"][0]["receipt_no"],
-                "date": record["receipts"][0]["date"],
-                "payer": record["payer"],
-                "total": record["receipts"][0]["total"],
-                "payment_method": record["receipts"][0]["payment_method"],
-                "share_with": record["share_with"]
-            }
-            # Append the record object to the response list
-            response.append(record_obj)
+    # Iterate through the records
+    for record in group["records"]:
+        record_obj = {
+            "merchant_name": record["receipts"][0]["merchant_name"],
+            "receipt_no": record["receipts"][0]["receipt_no"],
+            "date": record["receipts"][0]["date"],
+            "payer": record["payer"],
+            "total": record["receipts"][0]["total"],
+            "payment_method": record["receipts"][0]["payment_method"],
+            "share_with": record["share_with"]
+        }
+        # Append the record object to the response list
+        response.append(record_obj)
 
-        return jsonify(response)
+    return jsonify(response)
 
 
 @app.route('/groups_info', methods=['GET'])
@@ -199,17 +127,7 @@ def groups_info():
     if request.method != "GET":
         return jsonify({'error': 'Invalid request method'}), 400
 
-    # Connect to the database
-    db = establish_connection()
-    groups_collection = db.groups
-
-    # Retrieve the name of all groups, sorted by group_number
-    cursor = groups_collection.find({}, {"name": 1}).sort(
-        [('group_number', pymongo.ASCENDING)])
-
-    # Convert the cursor to a list and serialize it as JSON
-
-    return json_util.dumps(cursor)
+    return get_groups_info()
 
 
 @app.route('/<group>/receipts', methods=['POST', 'GET'])
@@ -230,14 +148,7 @@ def recipt(id):
 # For testing
 
 
-upload_requests = {"records": []}
-
-
-def search_upload_requests(request_id):
-    for i, record in enumerate(upload_requests["records"]):
-        if record["request_id"] == request_id:
-            return i
-    return -1
+upload_requests = {}
 
 
 @app.route('/test/upload/<string:group_id>', methods=['POST'])
@@ -252,25 +163,18 @@ def handle_upload(group_id):
     image = Image.open(io.BytesIO(image_bytes))
     image_hash = str(imagehash.average_hash(image))
 
-    # DEBUG COMMENTED
-    # if find_image_hash(image_hash) is not None:
-    #     return jsonify({"message": "Duplicated image."})
+    if find_image_hash(image_hash) is not None:
+        LOGGER.info("Duplicated image found.")
+        return jsonify({"message": "Duplicated image."})
 
     # convert image to base64
     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
-    # check if request_id already exists in upload_requests
-    record_index = search_upload_requests(request_id)
+    if request_id not in upload_requests:
+        upload_requests[request_id] = {
+            "request_id": request_id, "total_files": total_files, "remaining": total_files, "files": [], "hashs": []}
 
-    # if request_id does not exist, create a new record
-    if record_index == -1:
-        upload_requests["records"].append(
-            {"request_id": request_id, "total_files": total_files, "remaining": total_files, "files": []})
-
-        # set record_index to the last element
-        record_index = len(upload_requests["records"]) - 1
-
-    upload_requests["records"][record_index]["remaining"] -= 1
+    upload_requests[request_id]["remaining"] -= 1
 
     # save image file to disk
     try:
@@ -280,60 +184,48 @@ def handle_upload(group_id):
         LOGGER.error(e)
 
     # append the file name and base64 to the current record
-    upload_requests["records"][record_index]["files"].append({
+    upload_requests[request_id]["files"].append({
         "file_name": image_file.filename,
         "base64": image_base64,
         "hash": image_hash})
 
-    # upload image hash to db
-    if insert_image_hash(image_hash) is False:
-        # !!! user need to try the upload process again.
-        return jsonify({"message": "Fail to insert image hash."})
-
     # if no remaining files, execute receipt parser
-    if upload_requests["records"][record_index]["remaining"] == 0:
+    if upload_requests[request_id]["remaining"] == 0:
 
         # add records to parse_queue db
         insert_parse_queue(
-            upload_requests["records"][record_index]["request_id"],
+            upload_requests[request_id]["request_id"],
             group_id,
-            upload_requests["records"][record_index]["files"],
+            upload_requests[request_id]["files"],
         )
-
-        # !!! protential thread safe issue
-        # upload_requests["records"] = []
 
         parser_thread = execute_receipt_parser(request_id)
         parser_thread.join()
         receipts_json_string = parser_output_string.splitlines()[-1]
         receipts = json.loads(receipts_json_string)
 
-        if len(receipts) != 0:
+        if receipts:
             for receipt in receipts:
-                for record in upload_requests["records"]:
-                    is_found = False
-                    for image_file in record["files"]:
-                        if image_file["file_name"] == receipt['file_name']:
-                            image_base64 = image_file["base64"]
-                            image_hash = image_file['hash']
-                            is_found = True
-                            break
-                    if is_found is True:
-                        break
+                for image_file in upload_requests[request_id]["files"]:
+                    if image_file["file_name"] == receipt['file_name']:
+                        insert_record_by_group_id(
+                            receipt, group_id, request_id, receipt['file_name'], image_file["base64"], image_file['hash'])
 
-                insert_record_by_group_id(
-                    receipt, group_id, request_id, receipt['file_name'], image_base64, image_hash)
-            pass
-            # append base64 to receipts
-            # upload to db base on the group id
-        pass
-        # TODO: delete the upload_requests with this request_id
-        # TODO: add result to group
-        # TODO: return receipts
+        # upload image hash to db
+        image_hashs = []
+        for image_file in upload_requests[request_id]["files"]:
+            image_hashs.append(image_file["hash"])
+        if insert_image_hash(image_hashs) is False:
+            return jsonify({"message": "Fail to insert image hash."})
+
+        delete_parse_queue(request_id)
+        del upload_requests[request_id]
+
+    LOGGER.info("Upload complete.")
     return jsonify({"request_id": request_id, "total_files": total_files, "remaining": total_files})
 
 
-@app.route('/internal/parse/<string:request_id>', methods=['GET', 'POST'])
+@ app.route('/internal/parse/<string:request_id>', methods=['GET', 'POST'])
 def handle_parse(request_id):
     if request.method == "GET":
         # TODO: GET parse_queue_id from DB.
@@ -367,7 +259,7 @@ def handle_parse(request_id):
         # # use external API
 
 
-@app.route('/external/abn/search', methods=['GET'])
+@ app.route('/external/abn/search', methods=['GET'])
 def abn_query():
     if request.method == "GET":
         # Get the 'id' parameter from the query string
