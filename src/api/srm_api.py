@@ -253,7 +253,7 @@ def handle_upload(group_id):
         del upload_requests[request_id]
 
     LOGGER.info("Upload complete.")
-    return jsonify({"request_id": request_id, "total_files": total_files, "remaining": total_files})
+    return jsonify({"message": "Upload complete."})
 
 
 @ app.route('/internal/parse/<string:request_id>', methods=['GET', 'POST'])
