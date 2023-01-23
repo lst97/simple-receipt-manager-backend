@@ -34,7 +34,7 @@ IMG_FOLDER = 'receipt_parser/data/img'
 TEMP_FOLDER = 'receipt_parser/data/tmp'
 OCR_FOLDER = 'receipt_parser/data/txt'
 
-UUID_REGEX = "^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$"
+UUID_REGEX = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 
 def delete_parsed_data(files_name):
