@@ -110,7 +110,6 @@ def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_ba
     record["share_with"] = ''
     record["base64"] = image_base64
     record["hash"] = image_hash
-    record["raw"] = ""  # NEED OCR RAW TXT DATA
 
     result = groups.update_one(
         {"_id": ObjectId(group_id)}, {"$push": {"records": record}})

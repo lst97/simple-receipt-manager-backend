@@ -14,8 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
-
 from terminaltables import SingleTable
 
 from .receipt import Receipt
@@ -44,52 +42,6 @@ def run(files_name):
             join(dirname(BASE_PATH), TEMP_FOLDER, file_name + '.txt'))
 
     return ocr_receipts(config, receipt_files)
-
-
-# def get_files_in_folder(folder, include_hidden=False):
-#     """
-#     :param folder: str
-#         Path to folder to list
-#     :param include_hidden: bool
-#         True iff you want also hidden files
-#     :return: [] of str
-#         List of full path of files in folder
-#     """
-
-#     files = os.listdir(os.path.join(BASE_PATH, folder)
-#                        )  # list content of folder
-#     if not include_hidden:  # avoid files starting with "."
-#         files = [
-#             f for f in files if not f.startswith(".")
-#         ]  #
-
-#     files = [
-#         join(dirname(dirname(__file__)), "data/txt", f) for f in files
-#     ]  # complete path
-#     return [
-#         f for f in files if os.path.isfile(f)
-#     ]  # just files
-
-
-def output_statistics(stats, write_file="data/stats.csv"):
-    """
-    :param stats: {}
-        Statistics details
-    :param write_file: obj
-        str iff you want output file (or else None)
-    :return: void
-        Prints stats (and eventually writes them)
-    """
-
-    stats_str = STATS_OUTPUT_FORMAT.format(
-        time.time(), stats["total"], stats["merchant_name"], stats["date"],
-        stats["sum"]
-    )
-    LOGGER.info("Statistics details: " + stats_str)
-
-    if write_file:
-        with open(join(dirname(dirname(__file__)), write_file), "a") as stats_file:
-            stats_file.write(stats_str)
 
 
 def percent(numerator, denominator):
@@ -149,14 +101,6 @@ def ocr_receipts(config, receipt_files):
 
         receipts.append({"merchant_name": receipt.merchant_name, "merchant_phone": receipt.merchant_phone, "ABN": receipt.merchant_company_reg_no,
                          "date": receipt.date, "time": receipt.time, "total": receipt.total, "payment_method": receipt.payment_method})
-
-        # stats["total"] += 1
-        # if receipt.market:
-        #     stats["market"] += 1
-        # if receipt.date:
-        #     stats["date"] += 1
-        # if receipt.sum:
-        #     stats["sum"] += 1
 
     table = SingleTable(table_data)
     LOGGER.info("Parser output:")

@@ -293,7 +293,6 @@ class Receipt(object):
             "date": self.date,
             "sum": self.sum,
             "items": self.items,
-            "lines": self.lines
         }
 
         return json.dumps(object_data)
