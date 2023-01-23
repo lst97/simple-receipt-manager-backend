@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup as BSHTML
 import imagehash
 from PIL import Image
 import io
+import re
 
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
@@ -32,6 +33,8 @@ HOST_PORT = 5000
 IMG_FOLDER = 'receipt_parser/data/img'
 TEMP_FOLDER = 'receipt_parser/data/tmp'
 OCR_FOLDER = 'receipt_parser/data/txt'
+
+UUID_REGEX = "^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$"
 
 
 def delete_parsed_data(files_name):
@@ -170,11 +173,19 @@ def handle_upload(group_id):
     # how many files are expected to be uploaded for this request_id
     total_files = int(request.form.get('total_files'))
     request_id = request.form.get('request_id')
+
+    if not re.match(UUID_REGEX, request_id):
+        return jsonify({"error": "Invalid request_id.", "code": -1})
+
     image_file = request.files.get("file")
 
     # image hash
     image_bytes = image_file.read()
-    image = Image.open(io.BytesIO(image_bytes))
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+    except IOError:
+        return jsonify({"error": "Invalid image file.", "code": -1})
+
     image_hash = str(imagehash.average_hash(image))
 
     if find_image_hash(image_hash) is not None:
@@ -192,7 +203,7 @@ def handle_upload(group_id):
 
     # save image file to disk
     try:
-        with open(join(dirname(__file__), f'receipt_parser/data/img/{image_file.filename}'), "wb") as stream:
+        with open(join(dirname(__file__), 'receipt_parser/data/img', image_file.filename), "wb") as stream:
             stream.write(base64.b64decode(image_base64))
     except Exception as e:
         LOGGER.error(e)
