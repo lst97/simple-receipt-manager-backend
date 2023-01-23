@@ -175,35 +175,35 @@ def handle_upload(group_id):
     total_files = int(request.form.get('total_files'))
     request_id = request.form.get('request_id')
 
+    if request_id not in upload_requests:
+        upload_requests[request_id] = {
+            "request_id": request_id, "total_files": total_files, "remaining": total_files, "files": [], "hashs": []}
+
+    upload_requests[request_id]["remaining"] -= 1
+
     if not re.match(UUID_REGEX, request_id):
-        return jsonify({"error": "Invalid request_id.", "code": -1})
+        return jsonify({"message": "Invalid request_id."}), 400
 
     image_file = request.files.get("file")
 
     if not re.match(FILE_NAME_REGEX, image_file.filename):
-        return jsonify({"error": "Invalid file name.", "code": -1})
+        return jsonify({"message": "Invalid file name."}), 400
 
     # image hash
     image_bytes = image_file.read()
     try:
         image = Image.open(io.BytesIO(image_bytes))
     except IOError:
-        return jsonify({"error": "Invalid image file.", "code": -1})
+        return jsonify({"message": "Invalid image file."}), 400
 
     image_hash = str(imagehash.average_hash(image))
 
     if find_image_hash(image_hash) is not None:
         LOGGER.info("Duplicated image found.")
-        return jsonify({"message": "Duplicated image."})
+        return jsonify({"message": "Duplicated image"}), 400
 
     # convert image to base64
     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-
-    if request_id not in upload_requests:
-        upload_requests[request_id] = {
-            "request_id": request_id, "total_files": total_files, "remaining": total_files, "files": [], "hashs": []}
-
-    upload_requests[request_id]["remaining"] -= 1
 
     # save image file to disk
     try:
