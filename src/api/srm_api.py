@@ -179,14 +179,14 @@ def handle_upload(group_id):
         upload_requests[request_id] = {
             "request_id": request_id, "total_files": total_files, "remaining": total_files, "files": [], "hashs": []}
 
-    upload_requests[request_id]["remaining"] -= 1
-
     if not re.match(UUID_REGEX, request_id):
+        upload_requests[request_id]["remaining"] -= 1
         return jsonify({"message": "Invalid request_id."}), 400
 
     image_file = request.files.get("file")
 
     if not re.match(FILE_NAME_REGEX, image_file.filename):
+        upload_requests[request_id]["remaining"] -= 1
         return jsonify({"message": "Invalid file name."}), 400
 
     # image hash
@@ -194,11 +194,13 @@ def handle_upload(group_id):
     try:
         image = Image.open(io.BytesIO(image_bytes))
     except IOError:
+        upload_requests[request_id]["remaining"] -= 1
         return jsonify({"message": "Invalid image file."}), 400
 
     image_hash = str(imagehash.average_hash(image))
 
     if find_image_hash(image_hash) is not None:
+        upload_requests[request_id]["remaining"] -= 1
         LOGGER.info("Duplicated image found.")
         return jsonify({"message": "Duplicated image"}), 400
 
@@ -218,6 +220,8 @@ def handle_upload(group_id):
         "base64": image_base64,
         "hash": image_hash})
 
+    upload_requests[request_id]["remaining"] -= 1
+
     # if no remaining files, execute receipt parser
     if upload_requests[request_id]["remaining"] == 0:
 
@@ -233,6 +237,7 @@ def handle_upload(group_id):
         receipts_json_string = parser_output_string.splitlines()[-1]
         receipts = json.loads(receipts_json_string)
 
+        # TODO: optmize
         for image_file in upload_requests[request_id]["files"]:
             for receipt in receipts:
                 if image_file["file_name"] == receipt['file_name']:
@@ -264,12 +269,8 @@ def handle_upload(group_id):
 def handle_parse(request_id):
     if request.method == "GET":
         # TODO: GET parse_queue_id from DB.
-        db = establish_connection()
-        parse_queue = db["parse_queue"]
-        cursor = parse_queue.find_one(
-            {"request_id": request_id}, {"files": 1, "_id": 0})
 
-        return json_util.dumps(cursor)
+        return get_parse_queue(request_id)
         # parse_queue_collection = db.parse_queue
         # cursor = parse_queue_collection.find({"request_id": request_id})
         # response = []
