@@ -35,6 +35,7 @@ TEMP_FOLDER = 'receipt_parser/data/tmp'
 OCR_FOLDER = 'receipt_parser/data/txt'
 
 UUID_REGEX = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+FILE_NAME_REGEX = '^[A-Za-z0-9_.-]+\.(jpg|jpeg|png|gif)$'
 
 
 def delete_parsed_data(files_name):
@@ -178,6 +179,9 @@ def handle_upload(group_id):
         return jsonify({"error": "Invalid request_id.", "code": -1})
 
     image_file = request.files.get("file")
+
+    if not re.match(FILE_NAME_REGEX, image_file.filename):
+        return jsonify({"error": "Invalid file name.", "code": -1})
 
     # image hash
     image_bytes = image_file.read()
