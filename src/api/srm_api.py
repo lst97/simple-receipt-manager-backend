@@ -7,7 +7,6 @@ from bson import json_util
 from dotenv import load_dotenv
 import os
 from os.path import join, dirname
-import pymongo
 import logging
 import subprocess
 import threading
@@ -29,6 +28,21 @@ CORS(app)
 LOGGER = logging.getLogger(__name__)
 HOST_IP = 'localhost'
 HOST_PORT = 5000
+
+IMG_FOLDER = 'receipt_parser/data/img'
+TEMP_FOLDER = 'receipt_parser/data/tmp'
+OCR_FOLDER = 'receipt_parser/data/txt'
+
+
+def delete_parsed_data(files_name):
+    for file_name in files_name:
+        try:
+            LOGGER.info("Delete parsed images in local storage.")
+            os.remove(join(dirname(__file__), IMG_FOLDER, file_name))
+            os.remove(join(dirname(__file__), TEMP_FOLDER, file_name))
+            os.remove(join(dirname(__file__), OCR_FOLDER, file_name + '.txt'))
+        except OSError as e:
+            LOGGER.info(e)
 
 
 def get_files_from_api(request_id):
@@ -204,12 +218,18 @@ def handle_upload(group_id):
         receipts_json_string = parser_output_string.splitlines()[-1]
         receipts = json.loads(receipts_json_string)
 
-        if receipts:
+        for image_file in upload_requests[request_id]["files"]:
             for receipt in receipts:
-                for image_file in upload_requests[request_id]["files"]:
-                    if image_file["file_name"] == receipt['file_name']:
-                        insert_record_by_group_id(
-                            receipt, group_id, request_id, receipt['file_name'], image_file["base64"], image_file['hash'])
+                if image_file["file_name"] == receipt['file_name']:
+                    insert_record_by_group_id(
+                        receipt, group_id, request_id, receipt['file_name'], image_file["base64"], image_file['hash'])
+                    break
+
+        # delete local storage
+        files_name = []
+        for image_file in upload_requests[request_id]["files"]:
+            files_name.append(image_file["file_name"])
+        threading.Thread(target=delete_parsed_data, args=(files_name,)).start()
 
         # upload image hash to db
         image_hashs = []

@@ -19,10 +19,9 @@ def run(files_name):
     receipts = parser.run(files_name)
     for idx, receipt in enumerate(receipts):
         receipt["file_name"] = files_name[idx]
+        receipt["receipt_no"] = ''
 
-    receipt["receipt_no"] = ''
-    receipt = [receipt]
-    sys.stdout.write(json.dumps(receipt).replace("\n", ""))
+    sys.stdout.write(json.dumps(receipts).replace("\n", ""))
 
     LOGGER.info("Parsing DONE.")
 
