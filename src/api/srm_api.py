@@ -254,6 +254,12 @@ class UploadRequests():
         self.pending_pool.append(self.pool[request_id])
 
     def update_receipts(self, request_id, receipts):
+        """Inser receipts to each files
+
+        Args:
+            request_id (_type_): request uuid
+            receipts (_type_): parsed receipts
+        """
         # create a dictionary mapping file names to receipts
         receipt_dict = {r['file_name']: r for r in receipts}
         for file_idx, image_file in enumerate(self.pool[request_id]["files"]):
@@ -261,12 +267,19 @@ class UploadRequests():
                 self.pool[request_id]["files"][file_idx]["receipt"] = receipt_dict[image_file["name"]]
                 del receipt_dict[image_file["name"]]
 
+    def get_request(self, request_id):
+        return self.pool[request_id]
+
     def get_pending_request(self, request_id):
         return self.pending_pool[request_id]
 
     def to_pending_pool(self, request_id):
         self.pending_pool[request_id] = self.pool[request_id]
-        self.pending_pool["upload"] = False
+        self.pending_pool["completed"] = False
+
+        return self.pending_pool[request_id]
+
+    def remove(self, request_id):
         del self.pool[request_id]
 
     @staticmethod
@@ -352,10 +365,11 @@ def handle_upload(group_id):
         receipts = json.loads(receipts_json_string)
 
         upload_requests.update_receipts(request_id, receipts)
-        upload_requests.to_pending_pool(request_id)
+        response = upload_requests.to_pending_pool(request_id)
+        upload_requests.remove(request_id)
 
-        response = upload_requests.get_pending_request(request_id)
         response = upload_requests.remove_base64(response)
+        response["request_id"] = request_id
         return jsonify(response)
 
     return jsonify({"message": "Received", "file": image_file.filename})
