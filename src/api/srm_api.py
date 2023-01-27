@@ -254,18 +254,24 @@ class UploadRequests():
         self.pending_pool.append(self.pool[request_id])
 
     def update_receipts(self, request_id, receipts):
-        """Inser receipts to each files
+        """Inser receipts to each files and update receipt field
 
         Args:
-            request_id (_type_): request uuid
-            receipts (_type_): parsed receipts
+            request_id (_type_): _description_
+            receipts (_type_): _description_
+            groups_info (_type_): _description_
         """
         # create a dictionary mapping file names to receipts
         receipt_dict = {r['file_name']: r for r in receipts}
         for file_idx, image_file in enumerate(self.pool[request_id]["files"]):
             if image_file["name"] in receipt_dict:
                 self.pool[request_id]["files"][file_idx]["receipt"] = receipt_dict[image_file["name"]]
+                self.pool[request_id]["files"][file_idx]["receipt"]["payer"] = ""
+                self.pool[request_id]["files"][file_idx]["receipt"]["share_with"] = ""
                 del receipt_dict[image_file["name"]]
+
+    def update_users(self, request_id, group_info):
+        self.pool[request_id]["users"] = group_info["users"]
 
     def get_request(self, request_id):
         return self.pool[request_id]
@@ -292,7 +298,7 @@ class UploadRequests():
 upload_requests = UploadRequests()
 
 
-def validate_upload_request(request_id, group_id, total_files, file_name, image_file):
+def validate_upload_request(request_id, groups_info, group_id, total_files, file_name, image_file):
 
     if not (re.match(UUID_REGEX, request_id) and upload_requests.is_valid_request(request_id)):
         return "Invalid request id."
@@ -309,10 +315,10 @@ def validate_upload_request(request_id, group_id, total_files, file_name, image_
     except IOError:
         return "Invalid file format."
 
-    records = get_group_records(group_id)
-    if records is None:
+    group_info = next(
+        (group_info for group_info in groups_info if group_info["_id"]["$oid"] == group_id), None)
+    if not group_info:
         return "Invalid group id."
-
     return ""
 
 
@@ -327,12 +333,17 @@ def handle_upload(group_id):
     image_file = request.files.get("file")
     image_bytes = image_file.read()
 
+    groups_info = json.loads(get_groups_info())
     error_message = validate_upload_request(
-        request_id, group_id, total_files, image_file.filename, image_bytes)
+        request_id, groups_info, group_id, total_files, image_file.filename, image_bytes)
     if error_message != "":
         upload_requests.drop(request_id)
         LOGGER.warning(error_message)
         return jsonify({"message": error_message}), 400
+
+    # MUST BE TRUE
+    group_info = next(
+        (group_info for group_info in groups_info if group_info["_id"]["$oid"] == group_id), None)
 
     upload_requests.initialize_values(request_id, group_id, int(total_files))
     image = Image.open(io.BytesIO(image_bytes))
@@ -365,6 +376,7 @@ def handle_upload(group_id):
         receipts = json.loads(receipts_json_string)
 
         upload_requests.update_receipts(request_id, receipts)
+        upload_requests.update_users(request_id, group_info)
         response = upload_requests.to_pending_pool(request_id)
         upload_requests.remove(request_id)
 

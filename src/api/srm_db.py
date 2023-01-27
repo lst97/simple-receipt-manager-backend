@@ -164,14 +164,13 @@ def get_groups_info():
     db = client[DB_NAME]
     groups_collection = db.groups
 
-    # Retrieve the name of all groups, sorted by group_number
-    cursor = groups_collection.find({}, {"name": 1}).sort(
+    cursor = groups_collection.find({}, {"name": 1, "users": 1, "_id": 1}).sort(
         [('group_number', pymongo.ASCENDING)])
 
-    cursor = json_util.dumps(cursor)
+    response = json_util.dumps(cursor)
     client.close()
     LOGGER.info("Get complete")
-    return cursor
+    return response
 
 
 def delete_parse_queue(request_id):
