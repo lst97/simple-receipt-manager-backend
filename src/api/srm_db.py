@@ -52,17 +52,6 @@ def insert_parse_queue(request_id, group_id, files):
     LOGGER.info("Insertion complete.")
 
 
-def delete_parse_queue(request_id):
-    LOGGER.info("Delete parse queue complete.")
-    client = establish_connection()
-    db = client[DB_NAME]
-    parse_queue_collection = db["parse_queue"]
-    result = parse_queue_collection.find_one({"request_id": request_id})
-    parse_queue_collection.delete_one(result)
-    client.close()
-    LOGGER.info("Insert complete.")
-
-
 def insert_image_hash(hashs):
     LOGGER.info("Insert image hash.")
     client = establish_connection()
@@ -95,22 +84,15 @@ def find_image_hash(hash_str):
     return cursor if cursor is None else json_util.dumps(cursor)
 
 
-def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_base64, image_hash):
-    LOGGER.info(f"Insert receipt record with group id {group_id}")
+def insert_upload_receipts(user_request):
+    LOGGER.info(
+        f"Insert receipt record with group id {user_request['group_id']}")
     client = establish_connection()
     db = client[DB_NAME]
     groups = db["groups"]
-    record = {}
-    record["receipts"] = [receipt]
-    record["request_id"] = request_id
-    record["file_name"] = file_name
-    record["payer"] = ''
-    record["share_with"] = ''
-    record["base64"] = image_base64
-    record["hash"] = image_hash
 
     result = groups.update_one(
-        {"_id": ObjectId(group_id)}, {"$push": {"records": record}})
+        {"_id": ObjectId(user_request['group_id'])}, {"$push": {"records": {"$each": user_request["files"]}}})
 
     # Check the result of the update
     if result.modified_count <= 0:
@@ -148,7 +130,7 @@ def get_group_records(group_id, includ_image=False):
         del projection["records"]
         projection["records.base64"] = 0
         projection["records.hash"] = 0
-        projection["records.raw"] = 0
+        # projection["records.raw"] = 0
 
     result = groups_collection.find_one(
         {"_id": ObjectId(group_id)}, projection)
@@ -173,25 +155,89 @@ def get_groups_info():
     return response
 
 
-def delete_parse_queue(request_id):
-    LOGGER.info("Delete parse queue status")
+def get_pending_queue(request_id):
     client = establish_connection()
     db = client[DB_NAME]
-    parse_queue_collection = db.parse_queue
-
-    parse_queue_collection.delete_one({"request_id": request_id})
-
-    LOGGER.info("Delete complete")
-    return True
-
-
-def get_parse_queue(request_id):
-    client = establish_connection()
-    db = client[DB_NAME]
-    parse_queue = db["parse_queue"]
+    parse_queue = db["pending_queue"]
     cursor = parse_queue.find_one(
-        {"request_id": request_id}, {"files": 1, "_id": 0})
+        {"request_id": request_id}, {"request_id": 1, "_id": 0})
 
     cursor = json_util.dumps(cursor)
     client.close()
     return cursor
+
+
+def insert_pending_queue(request_id):
+    client = establish_connection()
+    db = client[DB_NAME]
+    pending_queue = db["pending_queue"]
+    pending_queue_id = pending_queue.find_one(
+        {}, {"request_id": 0, "_id": 1})
+
+    result = pending_queue.update_one(
+        pending_queue_id, {"$push": {"request_id": request_id}})
+
+    # Check the result of the update
+    if result.modified_count <= 0:
+        LOGGER.error("Faile to add record into Database.")
+        client.close()
+        LOGGER.info("Insertion fail.")
+        return False
+
+    client.close()
+    LOGGER.info("Insertion complete.")
+    return True
+
+
+def get_users_by_group_id(group_id):
+    client = establish_connection()
+    db = client[DB_NAME]
+    groups_collection = db.groups
+
+    result = groups_collection.find_one(
+        {"_id": ObjectId(group_id)}, {"users": 1})
+
+    response = json_util.dumps(result)
+    client.close()
+    return response
+
+
+def get_group(group_id):
+    client = establish_connection()
+    db = client[DB_NAME]
+    groups = db["groups"]
+    cursor = groups.find_one(
+        {"_id": ObjectId(group_id)}, {"_id": 1})
+
+    cursor = json_util.dumps(cursor)
+    client.close()
+    return cursor
+
+
+def insert_users(group_id, users: list):
+    client = establish_connection()
+    db = client[DB_NAME]
+    groups = db["groups"]
+
+    result = groups.update_one(
+        {"_id": ObjectId(group_id)}, {"$addToSet": {"users": {"$each": users}}})
+
+    # Check the result of the update
+    if result.modified_count <= 0:
+        LOGGER.error("Faile to add record into Database.")
+        client.close()
+        LOGGER.info("Insertion fail.")
+        return False
+
+    client.close()
+    LOGGER.info("Insertion complete.")
+    return True
+
+
+def delete_pending_queue(request_id):
+    client = establish_connection()
+    db = client[DB_NAME]
+    pending_queue = db["pending_queue"]
+    pending_queue.update_one({"request_id": request_id}, {
+        "$pull": {"request_id": request_id}})
+    client.close()

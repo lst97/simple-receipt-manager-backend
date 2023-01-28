@@ -16,7 +16,8 @@ from PIL import Image
 import io
 import re
 import concurrent.futures
-
+import bleach
+from queue import Queue
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 app = Flask(__name__)
@@ -126,13 +127,13 @@ def group_records(group_id):
     # Iterate through the records
     for record in group["records"]:
         record_obj = {
-            "merchant_name": record["receipts"][0]["merchant_name"],
-            "receipt_no": record["receipts"][0]["receipt_no"],
-            "date": record["receipts"][0]["date"],
-            "payer": record["payer"],
-            "total": record["receipts"][0]["total"],
-            "payment_method": record["receipts"][0]["payment_method"],
-            "share_with": record["share_with"]
+            "merchant_name": record["receipt"]["merchant_name"],
+            "receipt_no": record["receipt"]["receipt_no"],
+            "date": record["receipt"]["date"],
+            "payer": record["receipt"]["payer"],
+            "total": record["receipt"]["total"],
+            "payment_method": record["receipt"]["payment_method"],
+            "share_with": record["receipt"]["share_with"]
         }
         # Append the record object to the response list
         response.append(record_obj)
@@ -172,7 +173,7 @@ class UploadRequests():
         self.pool = {}
         self.invalid_request_pool = []
         self.image_hashs = []
-        self.pending_pool = {}
+        self.pending_pool = {}  # currently not used.
         pass
 
     def create(self, request_id):
@@ -267,7 +268,7 @@ class UploadRequests():
             if image_file["name"] in receipt_dict:
                 self.pool[request_id]["files"][file_idx]["receipt"] = receipt_dict[image_file["name"]]
                 self.pool[request_id]["files"][file_idx]["receipt"]["payer"] = ""
-                self.pool[request_id]["files"][file_idx]["receipt"]["share_with"] = ""
+                self.pool[request_id]["files"][file_idx]["receipt"]["share_with"] = []
                 del receipt_dict[image_file["name"]]
 
     def update_users(self, request_id, group_info):
@@ -281,12 +282,16 @@ class UploadRequests():
 
     def to_pending_pool(self, request_id):
         self.pending_pool[request_id] = self.pool[request_id]
-        self.pending_pool["completed"] = False
+        threading.Thread(target=insert_pending_queue,
+                         args=(request_id,)).start()
 
-        return self.pending_pool[request_id]
+        return self.pending_pool[request_id].copy()
 
     def remove(self, request_id):
         del self.pool[request_id]
+
+    def remove_pending(self, request_id):
+        del self.pending_pool[request_id]
 
     @staticmethod
     def remove_base64(upload_request):
@@ -320,6 +325,83 @@ def validate_upload_request(request_id, groups_info, group_id, total_files, file
     if not group_info:
         return "Invalid group id."
     return ""
+
+
+def validate_submite_request(user_request):
+
+    # Need to speed up this process
+    pending_queue = get_pending_queue(user_request["request_id"])
+    group_records = get_group_records(user_request["group_id"])
+
+    if pending_queue == "null" or pending_queue is None:
+        return "Invalid request id."
+
+    if group_records == "null" or group_records is None:
+        return "Invalid group id."
+
+    return ""
+
+
+def insert_new_users_if_any(group_id, users: list):
+    try:
+        users.remove("")
+    except ValueError:
+        pass
+
+    insert_users(group_id, users)
+
+
+def get_users_from_request(user_request):
+    users = []
+    for record in user_request["files"]:
+        users.append(record['receipt']["payer"])
+        users += record['receipt']["share_with"]
+
+    return list(set(users))
+
+
+def remove_pending(request_id):
+    upload_requests.remove_pending(request_id)
+    delete_pending_queue(request_id)
+
+
+def update_records_base64(user_request):
+    records = user_request["files"]
+    for idx, record in enumerate(records):
+        records[idx]["base64"] = upload_requests.get_pending_request(
+            user_request["request_id"])["files"][idx]["base64"]
+
+    user_request["files"] = records
+    return user_request
+
+
+@app.route('/test/submite', methods=['POST'])
+def handle_submite():
+
+    user_request = request.json
+    error_message = validate_submite_request(user_request)
+    if error_message != "":
+        return jsonify({"message": error_message}), 400
+
+    cleaned_user_request = json.loads(bleach.clean(
+        json.dumps(user_request), tags=[], attributes={}))
+
+    respone_message = ""
+    if cleaned_user_request != user_request:
+        respone_message = "Process complete with warning: HTML tags were removed from your request for security reasons."
+
+    users = get_users_from_request(cleaned_user_request)
+    insert_new_users_if_any(cleaned_user_request["group_id"], users)
+
+    cleaned_user_request = update_records_base64(cleaned_user_request)
+
+    insert_upload_receipts(cleaned_user_request)
+    remove_pending(cleaned_user_request["request_id"])
+
+    if respone_message == "":
+        respone_message = "Process complete."
+
+    return jsonify({"message": respone_message})
 
 
 @app.route('/test/upload/<string:group_id>', methods=['POST'])
@@ -385,36 +467,6 @@ def handle_upload(group_id):
         return jsonify(response)
 
     return jsonify({"message": "Received", "file": image_file.filename})
-
-
-@ app.route('/internal/parse/<string:request_id>', methods=['GET', 'POST'])
-def handle_parse(request_id):
-    if request.method == "GET":
-        # TODO: GET parse_queue_id from DB.
-
-        return get_parse_queue(request_id)
-        # parse_queue_collection = db.parse_queue
-        # cursor = parse_queue_collection.find({"request_id": request_id})
-        # response = []
-        # for doc in cursor:
-        #     response.append(doc)
-        # return json.dumps(response, default=json_util.default)
-
-    if request.method == 'POST':
-        pass
-        # parse DONE
-        # For Testing
-
-        # @app.route('test/upload/parse', methods=['GET'])
-        # def parse_receipt():
-        #     if request.method == "GET":
-
-        #         execute_receipt_parser()
-        #         # db = establish_connection()
-
-        #         return "TODO"
-
-        # # use external API
 
 
 @ app.route('/external/abn/search', methods=['GET'])
