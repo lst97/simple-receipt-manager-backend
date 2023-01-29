@@ -333,7 +333,12 @@ def handle_upload(group_id):
     upload_request.recived()
     # save image file to disk
     try:
-        with open(os.path.normpath(os.path.join(os.path.dirname(__file__), 'receipt_parser/data/img', image_file.filename)), "wb") as stream:
+        base_path = os.path.join(os.path.dirname(
+            __file__), 'receipt_parser/data/img')
+        fullpath = os.path.normpath(base_path, image_file.filename)
+        if not fullpath.startswith(base_path):
+            raise Exception("Security Exception.")
+        with open(fullpath, "wb") as stream:
             stream.write(base64.b64decode(image_base64))
     except Exception as e:
         LOGGER.error(e)
@@ -395,7 +400,7 @@ class Submit:
         return ""
 
 
-@app.route('/test/submit', methods=['POST'])
+@ app.route('/test/submit', methods=['POST'])
 def handle_submit():
     submit = Submit()
 
