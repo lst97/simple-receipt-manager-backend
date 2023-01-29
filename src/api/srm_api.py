@@ -243,12 +243,10 @@ class UploadRequests(object):
         return False
 
     def remove_pending(self, request_id):
-        idx = 0
         for request_id, request_obj in self.pending_pool.items():
             if request_obj["request_id"] == request_id:
-                del self.pending_pool[idx]
+                del self.pending_pool[request_id]
                 return True
-            idx += 1
         return False
 
     def drop(self, request_id):
@@ -308,6 +306,8 @@ def handle_upload(group_id):
     request_id = request.form.get('request_id')
     total_files = request.form.get('total_files')
     image_file = request.files.get("file")
+    if not image_file:
+        return jsonify({"message": "No file is selected"}), 400
     image_bytes = image_file.read()
 
     groups_info = json.loads(DB.get_groups_info())
@@ -338,7 +338,7 @@ def handle_upload(group_id):
     except Exception as e:
         LOGGER.error(e)
         upload_requests.drop(request_id)
-        return jsonify({"message": "Server instenal error, please try to upload it again."}), 500
+        return jsonify({"message": "Server internal error, please try to upload it again."}), 500
 
     if upload_request.remaining_files() == 0:
         # current still sequenize, but plan to do it async later.
@@ -358,81 +358,70 @@ def handle_upload(group_id):
     return jsonify({"message": "Received", "file_name": image_file.filename})
 
 
-def validate_submite_request(user_request):
+class Submit:
+    def insert_new_members_if_needed(self, group_id, users):
+        users = [user for user in users if user]
+        DB.insert_users(group_id, users)
 
-    # Need to speed up this process
-    pending_queue = DB.get_pending_queue(user_request["request_id"])
-    group_records = DB.get_group_records(user_request["group_id"])
+    def get_members(self, user_request):
+        users = []
+        for record in user_request["files"]:
+            users.append(record['receipt']["payer"])
+            users += record['receipt']["share_with"]
+        return list(set(users))
 
-    if pending_queue == "null" or pending_queue is None:
-        return "Invalid request id."
+    def remove_pending_request(self, request_id):
+        upload_requests.remove_pending(request_id)
+        DB.delete_pending_queue(request_id)
 
-    if group_records == "null" or group_records is None:
-        return "Invalid group id."
+    def update_records_with_base64(self, user_request):
+        records = user_request["files"]
+        for i, _ in enumerate(records):
+            records[i]["base64"] = upload_requests.get_pending_request(
+                user_request["request_id"])["files"][i]["base64"]
+        user_request["files"] = records
+        return user_request
 
-    return ""
+    def validate(self, user_request):
+        pending_queue = DB.get_pending_queue(user_request["request_id"])
+        group_records = DB.get_group_records(user_request["group_id"])
 
+        if not pending_queue or pending_queue == "null":
+            return "Invalid request id."
 
-def insert_new_users_if_any(group_id, users: list):
-    try:
-        users.remove("")
-    except ValueError:
-        pass
+        if not group_records or group_records == "null":
+            return "Invalid group id."
 
-    DB.insert_users(group_id, users)
-
-
-def get_users_from_request(user_request):
-    users = []
-    for record in user_request["files"]:
-        users.append(record['receipt']["payer"])
-        users += record['receipt']["share_with"]
-
-    return list(set(users))
-
-
-def remove_pending(request_id):
-    upload_requests.remove_pending(request_id)
-    DB.delete_pending_queue(request_id)
-
-
-def update_records_base64(user_request):
-    records = user_request["files"]
-    for idx, _ in enumerate(records):
-        records[idx]["base64"] = upload_requests.get_pending_request(
-            user_request["request_id"])["files"][idx]["base64"]
-
-    user_request["files"] = records
-    return user_request
+        return ""
 
 
-@app.route('/test/submite', methods=['POST'])
-def handle_submite():
+@app.route('/test/submit', methods=['POST'])
+def handle_submit():
+    submit = Submit()
 
     user_request = request.json
-    error_message = validate_submite_request(user_request)
-    if error_message != "":
+
+    error_message = submit.validate(user_request)
+    if error_message:
         return jsonify({"message": error_message}), 400
 
     cleaned_user_request = json.loads(bleach.clean(
         json.dumps(user_request), tags=[], attributes={}))
-
-    respone_message = ""
+    response_message = "Process complete."
     if cleaned_user_request != user_request:
-        respone_message = "Process complete with warning: HTML tags were removed from your request for security reasons."
+        response_message = "Process complete with warning: HTML tags were removed from your request for security reasons."
 
-    users = get_users_from_request(cleaned_user_request)
-    insert_new_users_if_any(cleaned_user_request["group_id"], users)
+    users = submit.get_members(cleaned_user_request)
+    submit.insert_new_members_if_needed(
+        cleaned_user_request["group_id"], users)
 
-    cleaned_user_request = update_records_base64(cleaned_user_request)
+    cleaned_user_request = submit.update_records_with_base64(
+        cleaned_user_request)
 
     DB.insert_upload_receipts(cleaned_user_request)
-    remove_pending(cleaned_user_request["request_id"])
+    submit.remove_pending_request(cleaned_user_request["request_id"])
 
-    if respone_message == "":
-        respone_message = "Process complete."
-
-    return jsonify({"message": respone_message})
+    return jsonify({"message": response_message})
 
 
 @ app.route('/external/abn/search', methods=['GET'])

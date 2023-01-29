@@ -1,11 +1,12 @@
-import pymongo
-from bson import json_util, ObjectId
-from dotenv import load_dotenv
-import os
+# Importing necessary libraries
 from os.path import join, dirname
-import coloredlogs
+import os
 import logging
-import json
+import coloredlogs
+from bson import json_util, ObjectId
+import pymongo
+from dotenv import load_dotenv
+
 LOGGER = logging.getLogger(__name__)
 coloredlogs.install(level='DEBUG')
 coloredlogs.install(level='DEBUG', logging=LOGGER)
@@ -155,7 +156,8 @@ class MongoDB():
         with self._establish_connection() as client:
             db = client[DB_NAME]
             pending_queue = db["pending_queue"]
-            result = pending_queue.update_one(self.pending_queue_object_id, {
+            pending_queue_object_id = self._get_pending_queue_object_id()
+            result = pending_queue.update_one(pending_queue_object_id, {
                 "$pull": {"request_id": request_id}})
 
             # Check the result of the update
@@ -176,16 +178,21 @@ class MongoDB():
             return json_util.dumps(result)
 
     def insert_users(self, group_id, users: list):
-        LOGGER.info("Insert new users if any.")
-        with self._establish_connection() as client:
-            db = client[DB_NAME]
-            groups = db["groups"]
+        try:
+            with self._establish_connection() as client:
+                db = client[DB_NAME]
+                groups = db["groups"]
 
-            result = groups.update_one(
-                {"_id": ObjectId(group_id)}, {"$addToSet": {"users": {"$each": users}}})
+                result = groups.update_one(
+                    {"_id": ObjectId(group_id)}, {"$addToSet": {"users": {"$each": users}}})
 
-            # Check the result of the update
-            if result.modified_count <= 0:
-                LOGGER.error("Faile to add record into Database.")
-                return False
+                # Check the result of the update
+                if result.modified_count <= 0:
+                    LOGGER.info("No users added.")
+                    return False
             return True
+
+        except pymongo.errors.PyMongoError as e:
+            LOGGER.error(
+                "An error occurred when inserting new members: {}".format(str(e)))
+            return False

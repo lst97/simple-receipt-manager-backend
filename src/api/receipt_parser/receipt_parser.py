@@ -1,11 +1,16 @@
+# Import core module
+import json
 from core import enhancer
 from core import parse as parser
+
+# Import logging and environment setup modules
 import logging
 from dotenv import load_dotenv
 from os.path import join, dirname
 import sys
 import coloredlogs
-import json
+
+# Import operating system modules
 import os
 
 load_dotenv(dotenv_path=join(dirname(dirname(__file__)), 'config/.env'))
