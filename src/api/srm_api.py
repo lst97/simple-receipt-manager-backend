@@ -1,25 +1,33 @@
-import base64
-from .srm_db import *
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import json
-from dotenv import load_dotenv
+# Standard Library imports
 import os
-from os.path import join, dirname
-import logging
-import subprocess
-import threading
-import requests
-from bs4 import BeautifulSoup as BSHTML
-import imagehash
-from PIL import Image
 import io
 import re
-import concurrent.futures
-import bleach
-from queue import Queue
+import base64
+import json
+import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
-load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
+# Third-Party Library imports
+import requests
+from PIL import Image
+import imagehash
+from bs4 import BeautifulSoup as BSHTML
+import subprocess
+
+# Framework imports
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+# Local imports
+import bleach
+from .srm_db import MongoDB
+
+# Dotenv imports
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), 'config/.env'))
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'this is a secret key'
 app.config['CORS_HEADERS'] = 'Content-Type'
@@ -36,31 +44,9 @@ TEMP_FOLDER = 'receipt_parser/data/tmp'
 OCR_FOLDER = 'receipt_parser/data/txt'
 
 UUID_REGEX = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-FILE_NAME_REGEX = '^[A-Za-z0-9_.-]+\.(jpg|jpeg|png|gif)$'
+FILE_NAME_REGEX = '^[A-Za-z0-9_.-]+\.(jpg|jpeg|png)$'
 
-
-def delete_parsed_data(files_name):
-    for file_name in files_name:
-        try:
-            LOGGER.info("Delete parsed images in local storage.")
-            os.remove(join(dirname(__file__), IMG_FOLDER, file_name))
-            os.remove(join(dirname(__file__), TEMP_FOLDER, file_name))
-            os.remove(join(dirname(__file__), OCR_FOLDER, file_name + '.txt'))
-        except OSError as e:
-            LOGGER.info(e)
-
-
-def get_files_from_api(request_id):
-    response = requests.get(
-        '{0}/internal/parse/{1}'.format(os.getenv("SRM_API_URL"), request_id))
-
-    files = []
-    if response.status_code == 200:
-        json_data = response.json()
-        for files_obj in json_data["files"]:
-            files.append(files_obj["file_name"])
-
-    return files
+DB = MongoDB()
 
 
 def on_exit():
@@ -94,23 +80,17 @@ def execute_receipt_parser(files_name):
 
         except (OSError, subprocess.CalledProcessError) as exception:
             LOGGER.error('Exception occured: ' + str(exception))
-            LOGGER.info('Receipt Parser failed to complete it execution.')
             return False
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor() as executor:
         future = executor.submit(receipt_parser)
         return future.result()
-
-    # parser_thread = threading.Thread(target=receipt_parser)
-    # parser_thread.start()
-    # parser_thread.join()
-    # return parser_output_string
 
 
 @app.route('/groups', methods=['POST', 'GET'])
 def groups():
     if request.method == "GET":
-        return get_groups()
+        return DB.get_groups()
 
 
 @app.route('/group_records/<string:group_id>', methods=['GET'])
@@ -119,7 +99,7 @@ def group_records(group_id):
         return jsonify({'error': 'Invalid request method'}), 400
 
     # Find the group with the matching id and only return the "records" field
-    group = get_group_records(group_id)
+    group = DB.get_group_records(group_id)
 
     # Initialize an empty list for response
     response = []
@@ -143,158 +123,150 @@ def group_records(group_id):
 
 @app.route('/groups_info', methods=['GET'])
 def groups_info():
-    if request.method != "GET":
-        return jsonify({'error': 'Invalid request method'}), 400
-
-    return get_groups_info()
+    return DB.get_groups_info()
 
 
 @app.route('/<group>/receipts', methods=['POST', 'GET'])
 def receipts():
-    if request.method == "GET":
-
-        return "TODO"
+    return "TODO"
 
 
 @app.route('/<group>/recipts/<string:id>', methods=['POST', 'GET'])
 def recipt(id):
-    if request.method == "GET":
-
-        db = establish_connection()
-
-        return "TODO"
+    return "TODO"
 
 
 UPLOAD_REQUEST_LOCK = threading.Lock()
 
 
-class UploadRequests():
+class UploadRequests(object):
+    pool = []
+    invalid_requests_pool = []
+    image_hashs = []
+    pending_pool = {}  # currently not used.
+
     def __init__(self) -> None:
-        self.pool = {}
-        self.invalid_request_pool = []
-        self.image_hashs = []
-        self.pending_pool = {}  # currently not used.
         pass
 
-    def create(self, request_id):
-        try:
-            # ignore if request_id exsit.
-            self.pool[request_id]
-        except KeyError:
-            with UPLOAD_REQUEST_LOCK:
-                self.pool[request_id] = {
-                    "group_id": "", "total_files": "", "remaining": "", "files": []}
-
-    def initialize_values(self, request_id, group_id, total_files):
-        if self.pool[request_id]["group_id"] == "":
-            self.pool[request_id]["group_id"] = group_id
-
-        if self.pool[request_id]["total_files"] == "":
-            self.pool[request_id]["total_files"] = total_files
-            self.pool[request_id]["remaining"] = total_files
-
-    def insert_file(self, request_id, file_name, image_base64, image_hash):
-        try:
-            upload_request = self.pool[request_id]
-        except KeyError:
-            return None
-
-        upload_request["files"].append(
-            {"name": file_name, "base64": image_base64, "hash": image_hash})
-
-    def recived(self, request_id):
-        with UPLOAD_REQUEST_LOCK:
-            self.pool[request_id]["remaining"] -= 1
-
-    def mark_invalid(self, request_id):
-        self.pool[request_id]["is_valid"] = False
-
-    def drop(self, request_id):
-        with UPLOAD_REQUEST_LOCK:
-            self.invalid_request_pool.append(request_id)
-            del self.pool[request_id]
-
-    def is_valid_request(self, request_id):
-        try:
-            self.invalid_request_pool.index(request_id)
-        except ValueError:
-            try:
-                self.pool[request_id]
+    def _is_exist(self, request_id):
+        for request_obj in self.pool:
+            if request_obj.request["request_id"] == request_id:
                 return True
-            except KeyError:
-                return False
 
         return False
 
-    def find_request(self, request_id):
-        try:
-            return self.pool[request_id]
-        except KeyError:
-            return None
+    def create(self, request_id,  group_id, total_files):
+        if self.get_request(request_id) is None:
+            self.pool.append(self.Request(
+                self, request_id,  group_id, total_files))
+        return self.pool[-1]
 
-    def remaining_files(self, request_id):
-        return self.pool[request_id]["remaining"]
+    class Request(object):
+        def __init__(self, upload_requests_instance, request_id, group_id, total_files) -> None:
+            self.upload_requests = upload_requests_instance
+            self.request = {"request_id": request_id}
+            self._initialize_values(group_id, total_files)
 
-    def find_image_hash(self, image_hash):
-        try:
-            return self.image_hashs.index(image_hash)
-        except ValueError:
-            return None
+        def values(self):
+            return self.request
 
-    def get_files(self, request_id):
-        return self.pool[request_id]["files"]
+        def _initialize_values(self, group_id, total_files):
+            self.request["group_id"] = group_id
+            self.request["total_files"] = total_files
+            self.request["remaining"] = total_files
+            self.request["files"] = []
 
-    def get_files_name(self, request_id):
-        files_name = []
-        for image_file in self.pool[request_id]["files"]:
-            files_name.append(image_file["name"])
+        def insert_file(self, file_name, image_base64, image_hash):
+            self.request["files"].append(
+                {"name": file_name, "base64": image_base64, "hash": image_hash})
 
-        return files_name
+        def recived(self):
+            self.request["remaining"] -= 1
 
-    def pending(self, request_id):
-        self.pending_pool.append(self.pool[request_id])
+        def remaining_files(self):
+            return self.request["remaining"]
 
-    def update_receipts(self, request_id, receipts):
-        """Inser receipts to each files and update receipt field
+        def get_files(self):
+            return self.request["files"]
 
-        Args:
-            request_id (_type_): _description_
-            receipts (_type_): _description_
-            groups_info (_type_): _description_
-        """
-        # create a dictionary mapping file names to receipts
-        receipt_dict = {r['file_name']: r for r in receipts}
-        for file_idx, image_file in enumerate(self.pool[request_id]["files"]):
-            if image_file["name"] in receipt_dict:
-                self.pool[request_id]["files"][file_idx]["receipt"] = receipt_dict[image_file["name"]]
-                self.pool[request_id]["files"][file_idx]["receipt"]["payer"] = ""
-                self.pool[request_id]["files"][file_idx]["receipt"]["share_with"] = []
-                del receipt_dict[image_file["name"]]
+        def get_files_name(self):
+            files_name = []
+            for image_file in self.request["files"]:
+                files_name.append(image_file["name"])
 
-    def update_users(self, request_id, group_info):
-        self.pool[request_id]["users"] = group_info["users"]
+            return files_name
+
+        def update_receipts(self, receipts):
+            """Inser receipts to each files and update receipt field
+
+            Args:
+                request_id (_type_): _description_
+                receipts (_type_): _description_
+                groups_info (_type_): _description_
+            """
+            # create a dictionary mapping file names to receipts
+            receipt_dict = {r['file_name']: r for r in receipts}
+            for file_idx, image_file in enumerate(self.request["files"]):
+                if image_file["name"] in receipt_dict:
+                    self.request["files"][file_idx]["receipt"] = receipt_dict[image_file["name"]]
+                    self.request["files"][file_idx]["receipt"]["payer"] = ""
+                    self.request["files"][file_idx]["receipt"]["share_with"] = []
+                    del receipt_dict[image_file["name"]]
+
+        def update_users(self, group_info):
+            self.request["users"] = group_info["users"]
 
     def get_request(self, request_id):
-        return self.pool[request_id]
+        for request_obj in self.pool:
+            if request_obj.request["request_id"] == request_id:
+                return request_obj
+        return None
 
     def get_pending_request(self, request_id):
-        return self.pending_pool[request_id]
+        for request_id, request_obj in self.pending_pool.items():
+            if request_obj["request_id"] == request_id:
+                return request_obj
+        return None
 
     def to_pending_pool(self, request_id):
-        self.pending_pool[request_id] = self.pool[request_id]
-        threading.Thread(target=insert_pending_queue,
+        self.pending_pool[request_id] = self.get_request(request_id).request
+        threading.Thread(target=DB.insert_pending_queue,
                          args=(request_id,)).start()
 
         return self.pending_pool[request_id].copy()
 
     def remove(self, request_id):
-        del self.pool[request_id]
+        for idx, request_obj in enumerate(self.pool):
+            if request_obj.request["request_id"] == request_id:
+                del self.pool[idx]
+                return True
+        return False
 
     def remove_pending(self, request_id):
-        del self.pending_pool[request_id]
+        idx = 0
+        for request_id, request_obj in self.pending_pool.items():
+            if request_obj["request_id"] == request_id:
+                del self.pending_pool[idx]
+                return True
+            idx += 1
+        return False
+
+    def drop(self, request_id):
+        self.invalid_request_pool.append(request_id)
+        self.remove(request_id)
+
+    def get_invalid_request(self, request_id):
+        for invalid_request_pool in self.invalid_requests_pool:
+            if invalid_request_pool == request_id:
+                return True
+        return False
+
+    def is_valid_request(self, request_id):
+        return False if self.get_invalid_request(request_id) is True else True
 
     @staticmethod
     def remove_base64(upload_request):
+        upload_request = upload_request.request.copy()
         upload_request["files"] = [
             {"hash": image_file["hash"], "receipt": image_file["receipt"]} for image_file in upload_request["files"]]
         return upload_request
@@ -315,6 +287,7 @@ def validate_upload_request(request_id, groups_info, group_id, total_files, file
         total_files = int(total_files)
     except ValueError:
         return "Invalid total files number."
+
     try:
         Image.open(io.BytesIO(image_file))
     except IOError:
@@ -324,14 +297,72 @@ def validate_upload_request(request_id, groups_info, group_id, total_files, file
         (group_info for group_info in groups_info if group_info["_id"]["$oid"] == group_id), None)
     if not group_info:
         return "Invalid group id."
+
     return ""
+
+
+@app.route('/test/upload/<string:group_id>', methods=['POST'])
+def handle_upload(group_id):
+
+    # how many files are expected to be uploaded for this request_id
+    request_id = request.form.get('request_id')
+    total_files = request.form.get('total_files')
+    image_file = request.files.get("file")
+    image_bytes = image_file.read()
+
+    groups_info = json.loads(DB.get_groups_info())
+    error_message = validate_upload_request(
+        request_id, groups_info, group_id, total_files, image_file.filename, image_bytes)
+    if error_message != "":
+        upload_requests.drop(request_id)
+        LOGGER.warning(error_message)
+        return jsonify({"message": error_message}), 400
+
+    upload_request = upload_requests.create(
+        request_id, group_id, int(total_files))
+
+    # MUST BE TRUE
+    group_info = next(
+        (group_info for group_info in groups_info if group_info["_id"]["$oid"] == group_id), None)
+
+    image = Image.open(io.BytesIO(image_bytes))
+    image_hash = str(imagehash.average_hash(image))
+    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+    upload_request.insert_file(image_file.filename, image_base64, image_hash)
+    upload_request.recived()
+    # save image file to disk
+    try:
+        with open(os.path.join(os.path.dirname(__file__), 'receipt_parser/data/img', image_file.filename), "wb") as stream:
+            stream.write(base64.b64decode(image_base64))
+    except Exception as e:
+        LOGGER.error(e)
+        upload_requests.drop(request_id)
+        return jsonify({"message": "Server instenal error, please try to upload it again."}), 500
+
+    if upload_request.remaining_files() == 0:
+        # current still sequenize, but plan to do it async later.
+        files_name = upload_request.get_files_name()
+        parser_output_string = execute_receipt_parser(files_name)
+        receipts_json_string = parser_output_string.splitlines()[-1]
+        receipts = json.loads(receipts_json_string)
+
+        upload_request.update_receipts(receipts)
+        upload_request.update_users(group_info)
+        response = upload_requests.to_pending_pool(request_id)
+        upload_requests.remove(request_id)
+
+        response = upload_requests.remove_base64(upload_request)
+        return jsonify(response)
+
+    return jsonify({"message": "Received", "file_name": image_file.filename})
 
 
 def validate_submite_request(user_request):
 
     # Need to speed up this process
-    pending_queue = get_pending_queue(user_request["request_id"])
-    group_records = get_group_records(user_request["group_id"])
+    pending_queue = DB.get_pending_queue(user_request["request_id"])
+    group_records = DB.get_group_records(user_request["group_id"])
 
     if pending_queue == "null" or pending_queue is None:
         return "Invalid request id."
@@ -348,7 +379,7 @@ def insert_new_users_if_any(group_id, users: list):
     except ValueError:
         pass
 
-    insert_users(group_id, users)
+    DB.insert_users(group_id, users)
 
 
 def get_users_from_request(user_request):
@@ -362,12 +393,12 @@ def get_users_from_request(user_request):
 
 def remove_pending(request_id):
     upload_requests.remove_pending(request_id)
-    delete_pending_queue(request_id)
+    DB.delete_pending_queue(request_id)
 
 
 def update_records_base64(user_request):
     records = user_request["files"]
-    for idx, record in enumerate(records):
+    for idx, _ in enumerate(records):
         records[idx]["base64"] = upload_requests.get_pending_request(
             user_request["request_id"])["files"][idx]["base64"]
 
@@ -395,78 +426,13 @@ def handle_submite():
 
     cleaned_user_request = update_records_base64(cleaned_user_request)
 
-    insert_upload_receipts(cleaned_user_request)
+    DB.insert_upload_receipts(cleaned_user_request)
     remove_pending(cleaned_user_request["request_id"])
 
     if respone_message == "":
         respone_message = "Process complete."
 
     return jsonify({"message": respone_message})
-
-
-@app.route('/test/upload/<string:group_id>', methods=['POST'])
-def handle_upload(group_id):
-
-    # how many files are expected to be uploaded for this request_id
-    request_id = request.form.get('request_id')
-    upload_requests.create(request_id)
-    total_files = request.form.get('total_files')
-
-    image_file = request.files.get("file")
-    image_bytes = image_file.read()
-
-    groups_info = json.loads(get_groups_info())
-    error_message = validate_upload_request(
-        request_id, groups_info, group_id, total_files, image_file.filename, image_bytes)
-    if error_message != "":
-        upload_requests.drop(request_id)
-        LOGGER.warning(error_message)
-        return jsonify({"message": error_message}), 400
-
-    # MUST BE TRUE
-    group_info = next(
-        (group_info for group_info in groups_info if group_info["_id"]["$oid"] == group_id), None)
-
-    upload_requests.initialize_values(request_id, group_id, int(total_files))
-    image = Image.open(io.BytesIO(image_bytes))
-    image_hash = str(imagehash.average_hash(image))
-    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-
-    if upload_requests.find_image_hash(image_hash) is None:
-        # file already in DB
-        upload_requests.insert_file(
-            request_id, image_file.filename, image_base64, image_hash)
-        upload_requests.recived(request_id)
-    else:
-        upload_requests.recived(request_id)
-        return jsonify("Duplicated image."), 400
-
-    # save image file to disk
-    try:
-        with open(join(dirname(__file__), 'receipt_parser/data/img', image_file.filename), "wb") as stream:
-            stream.write(base64.b64decode(image_base64))
-    except Exception as e:
-        LOGGER.error(e)
-        upload_requests.drop(request_id)
-        return jsonify({"message": "Server instenal error, please try to upload it again."}), 500
-
-    if upload_requests.remaining_files(request_id) == 0:
-        # current still sequenize, but plan to do it async later.
-        files_name = upload_requests.get_files_name(request_id)
-        parser_output_string = execute_receipt_parser(files_name)
-        receipts_json_string = parser_output_string.splitlines()[-1]
-        receipts = json.loads(receipts_json_string)
-
-        upload_requests.update_receipts(request_id, receipts)
-        upload_requests.update_users(request_id, group_info)
-        response = upload_requests.to_pending_pool(request_id)
-        upload_requests.remove(request_id)
-
-        response = upload_requests.remove_base64(response)
-        response["request_id"] = request_id
-        return jsonify(response)
-
-    return jsonify({"message": "Received", "file": image_file.filename})
 
 
 @ app.route('/external/abn/search', methods=['GET'])

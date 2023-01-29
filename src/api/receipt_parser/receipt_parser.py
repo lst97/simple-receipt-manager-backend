@@ -28,10 +28,13 @@ def run(files_name):
         receipt["receipt_no"] = ''
 
     for file_name in files_name:
-        os.remove(join(dirname(__file__), IMAGE_FOLDER, file_name))
-        os.remove(join(dirname(__file__), TEMP_IMAGE_FOLDER, file_name))
-        os.remove(join(dirname(__file__), OCR_TEXT_FOLDER, file_name + '.txt'))
-
+        try:
+            os.remove(join(dirname(__file__), IMAGE_FOLDER, file_name))
+            os.remove(join(dirname(__file__), TEMP_IMAGE_FOLDER, file_name))
+            os.remove(join(dirname(__file__),
+                      OCR_TEXT_FOLDER, file_name + '.txt'))
+        except OSError as e:
+            LOGGER.info(e)
     sys.stdout.write(json.dumps(receipts).replace("\n", ""))
     LOGGER.info("Parsing DONE.")
 
