@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup as BSHTML
 import subprocess
 
 # Framework imports
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, escape
 from flask_cors import CORS
 
 # Local imports
@@ -333,7 +333,7 @@ def handle_upload(group_id):
     upload_request.recived()
     # save image file to disk
     try:
-        with open(os.path.join(os.path.dirname(__file__), 'receipt_parser/data/img', image_file.filename), "wb") as stream:
+        with open(os.path.normpath(os.path.join(os.path.dirname(__file__), 'receipt_parser/data/img', image_file.filename)), "wb") as stream:
             stream.write(base64.b64decode(image_base64))
     except Exception as e:
         LOGGER.error(e)
@@ -355,7 +355,7 @@ def handle_upload(group_id):
         response = upload_requests.remove_base64(upload_request)
         return jsonify(response)
 
-    return jsonify({"message": "Received", "file_name": image_file.filename})
+    return jsonify({"message": "Received", "file_name": escape(image_file.filename)})
 
 
 class Submit:
