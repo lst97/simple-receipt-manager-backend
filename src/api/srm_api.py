@@ -65,7 +65,6 @@ def execute_receipt_parser(files_name):
         """
         LOGGER.info("Create Receipt Parser subprocess.")
         try:
-            LOGGER.info("Get files info from API")
             subprocess_command = ["python3",
                                   "./src/api/receipt_parser/receipt_parser.py"]
             subprocess_command.append(str(len(files_name)))

@@ -11,7 +11,7 @@ LOGGER = logging.getLogger(__name__)
 coloredlogs.install(level='DEBUG')
 coloredlogs.install(level='DEBUG', logging=LOGGER)
 
-DB_NAME = "simple-receipt-manager"
+DB_NAME = "simple-receipts-manager"
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 
@@ -31,8 +31,9 @@ class MongoDB():
                 {}, {"request_id": 0, "_id": 1})
 
     def _establish_connection(self):
-        client = pymongo.MongoClient(
-            f"mongodb+srv://{self.admin_name}:{self.admin_password}@{self.connection_string}/test")
+        # client = pymongo.MongoClient(
+        #     f"mongodb+srv://{self.admin_name}:{self.admin_password}@{self.connection_string}/test")
+        client = pymongo.MongoClient('mongodb://localhost:27017')
         return client
 
     # IMAGE HASH RELATED
