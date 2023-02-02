@@ -1,11 +1,16 @@
+# Import core module
+import json
 from core import enhancer
 from core import parse as parser
+
+# Import logging and environment setup modules
 import logging
 from dotenv import load_dotenv
 from os.path import join, dirname
 import sys
 import coloredlogs
-import json
+
+# Import operating system modules
 import os
 
 load_dotenv(dotenv_path=join(dirname(dirname(__file__)), 'config/.env'))
@@ -28,10 +33,13 @@ def run(files_name):
         receipt["receipt_no"] = ''
 
     for file_name in files_name:
-        os.remove(join(dirname(__file__), IMAGE_FOLDER, file_name))
-        os.remove(join(dirname(__file__), TEMP_IMAGE_FOLDER, file_name))
-        os.remove(join(dirname(__file__), OCR_TEXT_FOLDER, file_name + '.txt'))
-
+        try:
+            os.remove(join(dirname(__file__), IMAGE_FOLDER, file_name))
+            os.remove(join(dirname(__file__), TEMP_IMAGE_FOLDER, file_name))
+            os.remove(join(dirname(__file__),
+                      OCR_TEXT_FOLDER, file_name + '.txt'))
+        except OSError as e:
+            LOGGER.info(e)
     sys.stdout.write(json.dumps(receipts).replace("\n", ""))
     LOGGER.info("Parsing DONE.")
 

@@ -1,198 +1,199 @@
-import pymongo
-from bson import json_util, ObjectId
-from dotenv import load_dotenv
-import os
+# Importing necessary libraries
 from os.path import join, dirname
-import coloredlogs
+import os
 import logging
+import coloredlogs
+from bson import json_util, ObjectId
+import pymongo
+from dotenv import load_dotenv
 
 LOGGER = logging.getLogger(__name__)
 coloredlogs.install(level='DEBUG')
 coloredlogs.install(level='DEBUG', logging=LOGGER)
 
-DB_NAME = "simple-receipt-manager"
+DB_NAME = "simple-receipts-manager"
 
 load_dotenv(dotenv_path=join(dirname(__file__), 'config/.env'))
 
 
-def establish_connection():
-    """
-    Establish a connection to the MongoDB server and return a client for a specific database.
-    """
+class MongoDB():
+    def __init__(self) -> None:
+        self.connection_string = os.getenv('DB_CONNECTION_STRING')
+        self.admin_name = os.getenv('ADMIN_NAME')
+        self.admin_password = os.getenv('ADMIN_PASSWORD')
 
-    LOGGER.info("Establishing database connection.")
-    # Retrieve the MongoDB connection string, admin name and password from environment variables
-    connection_string = os.getenv('DB_CONNECTION_STRING')
-    admin_name = os.getenv('ADMIN_NAME')
-    admin_password = os.getenv('ADMIN_PASSWORD')
+    def _get_pending_queue_object_id(self):
+        LOGGER.info("Get pending queue.")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            pending_queue = db["pending_queue"]
+            return pending_queue.find_one(
+                {}, {"request_id": 0, "_id": 1})
 
-    # Connect to the MongoDB server
-    client = pymongo.MongoClient(
-        f"mongodb+srv://{admin_name}:{admin_password}@{connection_string}/test")
-    LOGGER.info("Connection established.")
+    def _establish_connection(self):
+        # client = pymongo.MongoClient(
+        #     f"mongodb+srv://{self.admin_name}:{self.admin_password}@{self.connection_string}/test")
+        client = pymongo.MongoClient('mongodb://localhost:27017')
+        return client
 
-    return client
+    # IMAGE HASH RELATED
+    def insert_image_hash(self, hashs):
+        LOGGER.info("Insert image hash.")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            parsed_images = db["parsed_images"]
+            result = parsed_images.update_many(
+                self.parsed_images_object_id, {"$push": {"hashs": {"$each": hashs}}})
 
+            # Check the result of the update
+            if result.modified_count <= 0:
+                LOGGER.error("Faile to add image hash into Database.")
+                return False
 
-def insert_parse_queue(request_id, group_id, files):
-    LOGGER.info("Insert parse queue.")
-    client = establish_connection()
-    db = client[DB_NAME]
+            return True
 
-    parse_queue = db["parse_queue"]
-    data = {
-        "request_id": request_id,
-        "group_id": group_id,
-        "files":  files,
-        "success": False
-    }
-    parse_queue.insert_one(data)
-    client.close()
+    def find_image_hash(self, hash_str):
+        LOGGER.info("Find image hash.")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            parsed_images = db["parsed_images"]
+            result = parsed_images.find_one({"hashs": hash_str})
+        LOGGER.info("Find complete.")
+        return result if result is None else json_util.dumps(result)
 
-    LOGGER.info("Insertion complete.")
+    # GROUP RELATED
+    def insert_upload_receipts(self, user_request):
+        LOGGER.info(
+            f"Insert receipt record with group id {user_request['group_id']}")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups = db["groups"]
 
+            result = groups.update_one(
+                {"_id": ObjectId(user_request['group_id'])}, {
+                    "$push": {"records": {"$each": user_request["files"]}}}
+            )
 
-def delete_parse_queue(request_id):
-    LOGGER.info("Delete parse queue complete.")
-    client = establish_connection()
-    db = client[DB_NAME]
-    parse_queue_collection = db["parse_queue"]
-    result = parse_queue_collection.find_one({"request_id": request_id})
-    parse_queue_collection.delete_one(result)
-    client.close()
-    LOGGER.info("Insert complete.")
+            if result.modified_count <= 0:
+                LOGGER.error("Faile to add record into Database.")
+                return False
 
+            return True
 
-def insert_image_hash(hashs):
-    LOGGER.info("Insert image hash.")
-    client = establish_connection()
-    db = client[DB_NAME]
-    parsed_images = db["parsed_images"]
-    parsed_images_id = parsed_images.find_one({}, {"_id": 1})
-    result = parsed_images.update_many(
-        parsed_images_id, {"$push": {"hashs": {"$each": hashs}}})
+    def get_group(self, group_id):
+        LOGGER.info(f"Get group {group_id}")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups = db["groups"]
+            result = groups.find_one(
+                {"_id": ObjectId(group_id)}, {"_id": 1})
 
-    # Check the result of the update
-    if result.modified_count <= 0:
-        LOGGER.error("Faile to add image hash into Database.")
-        client.close()
-        LOGGER.info("Insertion fail.")
-        return False
+            return json_util.dumps(result)
 
-    client.close()
-    LOGGER.info("Deletetion compelete.")
-    return True
+    def get_groups(self):
+        """
+        Return all the groups values in the database,
+        NOT recommand to use as it is slown
 
+        Returns:
+            _type_: _description_
+        """
+        LOGGER.info("Get groups")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups_collection = db.groups
+            result = groups_collection.find()
 
-def find_image_hash(hash_str):
-    LOGGER.info("Find image hash.")
-    client = establish_connection()
-    db = client[DB_NAME]
-    parsed_images = db["parsed_images"]
-    cursor = parsed_images.find_one({"hashs": hash_str})
-    client.close()
-    LOGGER.info("Find complete.")
-    return cursor if cursor is None else json_util.dumps(cursor)
+            return json_util.dumps(result)
 
+    def get_group_records(self, group_id, includ_image=False):
+        LOGGER.info("Get group records")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups_collection = db.groups
 
-def insert_record_by_group_id(receipt, group_id, request_id, file_name, image_base64, image_hash):
-    LOGGER.info(f"Insert receipt record with group id {group_id}")
-    client = establish_connection()
-    db = client[DB_NAME]
-    groups = db["groups"]
-    record = {}
-    record["receipts"] = [receipt]
-    record["request_id"] = request_id
-    record["file_name"] = file_name
-    record["payer"] = ''
-    record["share_with"] = ''
-    record["base64"] = image_base64
-    record["hash"] = image_hash
+            projection = {"records": 1}
+            if not includ_image:
+                del projection["records"]
+                projection["records.base64"] = 0
+                projection["records.hash"] = 0
 
-    result = groups.update_one(
-        {"_id": ObjectId(group_id)}, {"$push": {"records": record}})
+            return groups_collection.find_one(
+                {"_id": ObjectId(group_id)}, projection)
 
-    # Check the result of the update
-    if result.modified_count <= 0:
-        LOGGER.error("Faile to add record into Database.")
-        client.close()
-        LOGGER.info("Insertion fail.")
-        return False
+    def get_groups_info(self):
+        LOGGER.info("Get groups info")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups_collection = db.groups
 
-    client.close()
-    LOGGER.info("Insertion complete.")
-    return True
+            result = groups_collection.find({}, {"name": 1, "users": 1, "_id": 1}).sort(
+                [('group_number', pymongo.ASCENDING)])
 
+            return json_util.dumps(result)
 
-def get_groups():
-    LOGGER.info("Get groups")
-    client = establish_connection()
-    db = client[DB_NAME]
-    groups_collection = db.groups
-    cursor = groups_collection.find()
+    # PENDING RELATED
+    def get_pending_queue(self, request_id):
+        LOGGER.info("Get pending queue.")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            parse_queue = db["pending_queue"]
+            result = parse_queue.find_one(
+                {"request_id": request_id}, {"request_id": 1, "_id": 0})
 
-    cursor = json_util.dumps(cursor)
-    client.close()
-    LOGGER.info("Get complete.")
-    return cursor
+            return json_util.dumps(result)
 
+    def insert_pending_queue(self, request_id):
+        LOGGER.info("Insert pending queue.")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            pending_queue = db["pending_queue"]
 
-def get_group_records(group_id, includ_image=False):
-    LOGGER.info("Get group records")
-    client = establish_connection()
-    db = client[DB_NAME]
-    groups_collection = db.groups
+            pending_queue_id = self._get_pending_queue_object_id()
+            pending_queue.update_one(
+                pending_queue_id, {"$push": {"request_id": request_id}})
 
-    projection = {"records": 1}
-    if not includ_image:
-        del projection["records"]
-        projection["records.base64"] = 0
-        projection["records.hash"] = 0
-        projection["records.raw"] = 0
+    def delete_pending_queue(self, request_id):
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            pending_queue = db["pending_queue"]
+            pending_queue_object_id = self._get_pending_queue_object_id()
+            result = pending_queue.update_one(pending_queue_object_id, {
+                "$pull": {"request_id": request_id}})
 
-    result = groups_collection.find_one(
-        {"_id": ObjectId(group_id)}, projection)
+            # Check the result of the update
+            if result.modified_count <= 0:
+                LOGGER.error("Faile to add record into Database.")
+                return False
+            return True
 
-    client.close()
-    LOGGER.info("Get complete")
-    return result
+    # USER RELATED
+    def get_users_by_group_id(self, group_id):
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups_collection = db.groups
 
+            result = groups_collection.find_one(
+                {"_id": ObjectId(group_id)}, {"users": 1})
 
-def get_groups_info():
-    LOGGER.info("Get groups info")
-    client = establish_connection()
-    db = client[DB_NAME]
-    groups_collection = db.groups
+            return json_util.dumps(result)
 
-    # Retrieve the name of all groups, sorted by group_number
-    cursor = groups_collection.find({}, {"name": 1}).sort(
-        [('group_number', pymongo.ASCENDING)])
+    def insert_users(self, group_id, users: list):
+        try:
+            with self._establish_connection() as client:
+                db = client[DB_NAME]
+                groups = db["groups"]
 
-    cursor = json_util.dumps(cursor)
-    client.close()
-    LOGGER.info("Get complete")
-    return cursor
+                result = groups.update_one(
+                    {"_id": ObjectId(group_id)}, {"$addToSet": {"users": {"$each": users}}})
 
+                # Check the result of the update
+                if result.modified_count <= 0:
+                    LOGGER.info("No users added.")
+                    return False
+            return True
 
-def delete_parse_queue(request_id):
-    LOGGER.info("Delete parse queue status")
-    client = establish_connection()
-    db = client[DB_NAME]
-    parse_queue_collection = db.parse_queue
-
-    parse_queue_collection.delete_one({"request_id": request_id})
-
-    LOGGER.info("Delete complete")
-    return True
-
-
-def get_parse_queue(request_id):
-    client = establish_connection()
-    db = client[DB_NAME]
-    parse_queue = db["parse_queue"]
-    cursor = parse_queue.find_one(
-        {"request_id": request_id}, {"files": 1, "_id": 0})
-
-    cursor = json_util.dumps(cursor)
-    client.close()
-    return cursor
+        except pymongo.errors.PyMongoError as e:
+            LOGGER.error(
+                "An error occurred when inserting new members: {}".format(str(e)))
+            return False
