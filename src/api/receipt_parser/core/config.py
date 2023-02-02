@@ -8,28 +8,20 @@ LOGGER = logging.getLogger("parser_core.config")
 coloredlogs.install(level='DEBUG', logger=LOGGER)
 
 
-def read_config(config="config.yml"):
+CONFIG_FILE = "config.yml"
+
+
+def read_config(config=CONFIG_FILE):
     """
-    :param file: str
-        Name of file to read
+    Reads and parses a YAML configuration file.
+    :param config: str
+        The name of the configuration file.
     :return: ObjectView
-        Parsed config file
+        The parsed configuration data.
     """
-    with open(config, 'rb') as stream:
-        try:
+    try:
+        with open(config, 'rb') as stream:
             docs = yaml.safe_load(stream)
             return ObjectView(docs)
-        except yaml.YAMLError as e:
-            LOGGER.error(e)
-
-
-def read_image_hashs(config=".hashs.json"):
-    with open(config, 'r') as stream:
-        return json.loads(stream.read())
-
-
-def write_image_hashs(file_name, hash_string, img_hashs, config=".hash.json"):
-    img_hashs["records"].append({"name": file_name, "hash": hash_string})
-    json_obj = json.dumps(img_hashs, indent=4)
-    with open(config, 'w') as stream:
-        stream.write(json_obj)
+    except yaml.YAMLError as e:
+        LOGGER.error(e)

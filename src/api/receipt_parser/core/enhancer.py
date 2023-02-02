@@ -26,10 +26,9 @@ from scipy.ndimage import interpolation as inter
 from os.path import join, dirname
 import logging
 import coloredlogs
-import imagehash
 
 from .receipt import Receipt
-from .config import read_config, read_image_hashs, write_image_hashs
+from .config import read_config
 
 IMAGE_FOLDER = "data/img"
 TMP_FOLDER = "data/tmp"
@@ -41,7 +40,6 @@ OUTPUT_TMP_FOLDER = os.path.join(BASE_PATH, TMP_FOLDER)
 OUTPUT_FOLDER = os.path.join(BASE_PATH, TEXT_FOLDER)
 
 CONFIG_YML_PATH = 'config/config.yml'
-CONFIG_HASHS_PATH = 'config/.hashs.json'
 
 ORANGE = '\033[33m'
 RESET = '\033[0m'
@@ -96,8 +94,8 @@ def rotate_image(input_file, output_file, angle=90):
         if width < height:
             angle = 0
 
-        print(ORANGE + '\t~: ' + RESET +
-              'Rotate image by: ' + str(angle) + "°" + RESET)
+        LOGGER.info(ORANGE + '\t~: ' + RESET +
+                    'Rotate image by: ' + str(angle) + "°" + RESET)
         with img.clone() as rotated:
             rotated.rotate(angle)
             rotated.save(filename=output_file)
@@ -126,8 +124,8 @@ def deskew_image(image, delta=1, limit=5):
     center = (w // 2, h // 2)
     M = cv2.getRotationMatrix2D(center, best_angle, 1.0)
 
-    print(ORANGE + '\t~: ' + RESET + 'Deskew image by: ' +
-          str(best_angle) + ' angle' + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET + 'Deskew image by: ' +
+                str(best_angle) + ' angle' + RESET)
 
     rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC,
                              borderMode=cv2.BORDER_REPLICATE)
@@ -145,9 +143,12 @@ def run_tesseract(input_file, output_file, language="eng"):
         Runs tesseract on image and saves result
     """
 
-    print(ORANGE + '\t~: ' + RESET + 'Parse image using pytesseract' + RESET)
-    print(ORANGE + '\t~: ' + RESET + 'Parse image at: ' + input_file + RESET)
-    print(ORANGE + '\t~: ' + RESET + 'Write result to: ' + output_file + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET +
+                'Parse image using pytesseract' + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET +
+                'Parse image at: ' + input_file + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET +
+                'Write result to: ' + output_file + RESET)
 
     with io.BytesIO() as transfer:
         with WandImage(filename=input_file) as img:
@@ -160,17 +161,16 @@ def run_tesseract(input_file, output_file, language="eng"):
             out = open(output_file, "w", encoding='utf-8')
             out.write(image_data)
             out.close()
-    print(ORANGE + '\t~: ' + RESET + "DONE" + RESET)
 
 
 def rescale_image(img):
-    print(ORANGE + '\t~: ' + RESET + 'Rescale image' + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET + 'Rescale image' + RESET)
     img = cv2.resize(img, None, fx=1.2, fy=1.2, interpolation=cv2.INTER_CUBIC)
     return img
 
 
 def grayscale_image(img):
-    print(ORANGE + '\t~: ' + RESET + 'Grayscale image' + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET + 'Grayscale image' + RESET)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     return img
 
@@ -180,8 +180,8 @@ def remove_noise(img):
     img = cv2.dilate(img, kernel, iterations=1)
     img = cv2.erode(img, kernel, iterations=1)
 
-    print(ORANGE + '\t~: ' + RESET +
-          'Applying gaussianBlur and medianBlur' + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET +
+                'Applying gaussianBlur and medianBlur' + RESET)
 
     img = cv2.threshold(cv2.GaussianBlur(img, (5, 5), 0),
                         150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
@@ -215,7 +215,8 @@ def remove_shadows(img):
 def detect_orientation(image):
     coords = np.column_stack(np.where(image > 0))
     angle = cv2.minAreaRect(coords)[-1]
-    print(ORANGE + '\t~: ' + RESET + 'Get rotation angle:' + str(angle) + RESET)
+    LOGGER.info(ORANGE + '\t~: ' + RESET +
+                'Get rotation angle:' + str(angle) + RESET)
 
     return image
 
@@ -272,28 +273,15 @@ def process_receipt(config, filename, rotate=True, grayscale=True, gaussian_blur
     return Receipt(config=config, raw=raw)
 
 
-def check_hash(img_path, hash_str, img_hashs):
-    for item in img_hashs["records"]:
-        if item['hash'] == hash_str:
-            LOGGER.info(img_path + " already enhanced.")
-            LOGGER.info("Process next image. (SKIP)")
-            return True
-    return False
-
-
-def run():
+def run(files_name):
     coloredlogs.install(level='DEBUG')
-    coloredlogs.install(level='DEBUG', logger=LOGGER)
-
+    coloredlogs.install(level='DEBUG', logging=LOGGER)
     prepare_folders()
 
     config = read_config(config=join(
         dirname(dirname(__file__)), CONFIG_YML_PATH))
 
-    img_hashs = read_image_hashs(config=join(
-        dirname(dirname(__file__)), CONFIG_HASHS_PATH))
-
-    images = list(find_images(INPUT_FOLDER))
+    images = files_name
     LOGGER.info(ORANGE + '~: ' + RESET + 'Found: ' + ORANGE + str(len(images)
                                                                   ) + RESET + ' images in: ' + ORANGE + IMAGE_FOLDER + RESET)
 
@@ -315,16 +303,8 @@ def run():
 
         if i != 1:
             print()
-
-        LOGGER.info("Start imagehash for compararson")
-        img_hash_str = str(imagehash.average_hash(Image.open(input_path)))
-        if check_hash(image, img_hash_str, img_hashs) == True:
-            i = i + 1
-            continue
-        LOGGER.info("Hash not found.")
-
         LOGGER.info(ORANGE + '~: ' + RESET + 'Process image (' + ORANGE + str(i) + '/' + str(
-            len(images)) + RESET + ') : ' + input_path.split('/')[-1] + RESET)
+            len(images)) + RESET + ') : ' + input_path + RESET)
 
         img = cv2.imread(input_path)
         img = enhance_image(img, tmp_path)
@@ -332,12 +312,4 @@ def run():
 
         run_tesseract(tmp_path, out_path, config.language)
 
-        write_image_hashs(image, img_hash_str, img_hashs, config=join(
-            dirname(dirname(__file__)), CONFIG_HASHS_PATH))
         i = i + 1
-
-    LOGGER.info("Enhancer exit.")
-
-
-if __name__ == '__main__':
-    run()
