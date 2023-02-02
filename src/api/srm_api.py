@@ -249,12 +249,12 @@ class UploadRequests(object):
         return False
 
     def drop(self, request_id):
-        self.invalid_request_pool.append(request_id)
+        self.invalid_requests_pool.append(request_id)
         self.remove(request_id)
 
     def get_invalid_request(self, request_id):
-        for invalid_request_pool in self.invalid_requests_pool:
-            if invalid_request_pool == request_id:
+        for invalid_requests_pool in self.invalid_requests_pool:
+            if invalid_requests_pool == request_id:
                 return True
         return False
 
@@ -329,12 +329,12 @@ def handle_upload(group_id):
     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
     upload_request.insert_file(image_file.filename, image_base64, image_hash)
-    upload_request.recived()
+
     # save image file to disk
     try:
         base_path = os.path.join(os.path.dirname(
-            __file__), 'receipt_parser/data/img')
-        fullpath = os.path.normpath(base_path, image_file.filename)
+            __file__), 'receipt_parser/data/img', image_file.filename)
+        fullpath = os.path.normpath(base_path)
         if not fullpath.startswith(base_path):
             raise Exception("Security Exception.")
         with open(fullpath, "wb") as stream:
@@ -344,7 +344,7 @@ def handle_upload(group_id):
         upload_requests.drop(request_id)
         return jsonify({"message": "Server internal error, please try to upload it again."}), 500
 
-    if upload_request.remaining_files() == 0:
+    if upload_request.remaining_files() - 1 == 0:
         # current still sequenize, but plan to do it async later.
         files_name = upload_request.get_files_name()
         parser_output_string = execute_receipt_parser(files_name)
@@ -359,6 +359,7 @@ def handle_upload(group_id):
         response = upload_requests.remove_base64(upload_request)
         return jsonify(response)
 
+    upload_request.recived()
     return jsonify({"message": "Received", "file_name": escape(image_file.filename)})
 
 
@@ -425,7 +426,7 @@ def handle_submit():
     DB.insert_upload_receipts(cleaned_user_request)
     submit.remove_pending_request(cleaned_user_request["request_id"])
 
-    return jsonify({"message": response_message})
+    return jsonify({"message": response_message}), 200
 
 
 @ app.route('/external/abn/search', methods=['GET'])

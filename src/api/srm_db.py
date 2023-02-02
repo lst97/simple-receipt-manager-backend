@@ -23,7 +23,7 @@ class MongoDB():
         self.admin_password = os.getenv('ADMIN_PASSWORD')
 
     def _get_pending_queue_object_id(self):
-        LOGGER.info("Initialize pending queue.")
+        LOGGER.info("Get pending queue.")
         with self._establish_connection() as client:
             db = client[DB_NAME]
             pending_queue = db["pending_queue"]
