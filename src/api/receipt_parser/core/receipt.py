@@ -203,7 +203,7 @@ class Receipt(object):
     def parse_payment_method(self):
         for payment_method_key in self.config.payment_method_keys:
             payment_method_line = self.fuzzy_find(payment_method_key)
-        return "CASH" if payment_method_line else "CARD"
+        return "cash" if payment_method_line else "card"
 
     def parse_items(self):
         items = []

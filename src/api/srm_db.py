@@ -62,6 +62,16 @@ class MongoDB():
         return result if result is None else json_util.dumps(result)
 
     # GROUP RELATED
+    def get_group_info(self, group_id):
+        LOGGER.info("Get group info.")
+        with self._establish_connection() as client:
+            db = client[DB_NAME]
+            groups = db["groups"]
+            result = groups.find_one(
+                {"_id": ObjectId(group_id)}, {"_id": 1, "name": 1, "users": 1})
+
+            return json_util.dumps(result)
+
     def insert_upload_receipts(self, user_request):
         LOGGER.info(
             f"Insert receipt record with group id {user_request['group_id']}")

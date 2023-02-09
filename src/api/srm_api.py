@@ -112,7 +112,8 @@ def group_records(group_id):
             "payer": record["receipt"]["payer"],
             "total": record["receipt"]["total"],
             "payment_method": record["receipt"]["payment_method"],
-            "share_with": record["receipt"]["share_with"]
+            "share_with": record["receipt"]["share_with"],
+            "payment_status": record["receipt"]["payment_status"]
         }
         # Append the record object to the response list
         response.append(record_obj)
@@ -120,7 +121,7 @@ def group_records(group_id):
     return jsonify(response)
 
 
-@app.route('/groups_info', methods=['GET'])
+@app.route('/test/groups_info', methods=['GET'])
 def groups_info():
     return DB.get_groups_info()
 
@@ -210,6 +211,7 @@ class UploadRequests(object):
                     self.request["files"][file_idx]["receipt"] = receipt_dict[image_file["name"]]
                     self.request["files"][file_idx]["receipt"]["payer"] = ""
                     self.request["files"][file_idx]["receipt"]["share_with"] = []
+                    self.request["files"][file_idx]["receipt"]["payment_status"] = 'false'
                     del receipt_dict[image_file["name"]]
 
         def update_users(self, group_info):
@@ -344,6 +346,8 @@ def handle_upload(group_id):
         upload_requests.drop(request_id)
         return jsonify({"message": "Server internal error, please try to upload it again."}), 500
 
+    upload_request.recived()
+
     if upload_request.remaining_files() - 1 == 0:
         # current still sequenize, but plan to do it async later.
         files_name = upload_request.get_files_name()
@@ -359,7 +363,6 @@ def handle_upload(group_id):
         response = upload_requests.remove_base64(upload_request)
         return jsonify(response)
 
-    upload_request.recived()
     return jsonify({"message": "Received", "file_name": escape(image_file.filename)})
 
 
@@ -427,6 +430,11 @@ def handle_submit():
     submit.remove_pending_request(cleaned_user_request["request_id"])
 
     return jsonify({"message": response_message}), 200
+
+
+@ app.route('/test/group_info/<string:group_id>', methods=['GET'])
+def handle_group_info(group_id):
+    return DB.get_group_info(group_id), 200
 
 
 @ app.route('/external/abn/search', methods=['GET'])
