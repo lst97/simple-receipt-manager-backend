@@ -86,13 +86,13 @@ def execute_receipt_parser(files_name):
         return future.result()
 
 
-@app.route('/groups', methods=['POST', 'GET'])
+@app.route('/test/groups', methods=['POST', 'GET'])
 def groups():
     if request.method == "GET":
         return DB.get_groups()
 
 
-@app.route('/group_records/<string:group_id>', methods=['GET'])
+@app.route('/test/group_records/<string:group_id>', methods=['GET'])
 def group_records(group_id):
     if request.method != "GET":
         return jsonify({'error': 'Invalid request method'}), 400
@@ -126,12 +126,12 @@ def groups_info():
     return DB.get_groups_info()
 
 
-@app.route('/<group>/receipts', methods=['POST', 'GET'])
+@app.route('/test/<group>/receipts', methods=['POST', 'GET'])
 def receipts():
     return "TODO"
 
 
-@app.route('/<group>/recipts/<string:id>', methods=['POST', 'GET'])
+@app.route('/test/<group>/recipts/<string:id>', methods=['POST', 'GET'])
 def recipt(id):
     return "TODO"
 
