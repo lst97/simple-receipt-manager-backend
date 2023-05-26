@@ -15,3 +15,4 @@ src/api/receipt_parser/data/img
 src/api/receipt_parser/data/tmp
 src/api/receipt_parser/data/stats.csv
 src/api/config/.env
+test/mongodb/node_modules
