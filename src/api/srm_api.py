@@ -1,3 +1,7 @@
+from .srm_db import MongoDB
+from .controllers.group_controller import group_controller_bp
+from .controllers.receipt_controller import receipt_controller_bp
+
 # Standard Library imports
 import os
 import io
@@ -6,6 +10,9 @@ import base64
 import json
 import logging
 import threading
+from .helpers.mongodb_helper import MongoDBHelper
+from flasgger import Swagger
+
 from concurrent.futures import ThreadPoolExecutor
 
 # Third-Party Library imports
@@ -21,19 +28,9 @@ from flask_cors import CORS
 
 # Local imports
 import bleach
-from .srm_db import MongoDB
 
 # Dotenv imports
 from dotenv import load_dotenv
-
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), 'config/.env'))
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'this is a secret key'
-app.config['CORS_HEADERS'] = 'Content-Type'
-app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32 MB
-
-CORS(app)
 
 LOGGER = logging.getLogger(__name__)
 HOST_IP = 'localhost'
@@ -46,15 +43,34 @@ OCR_FOLDER = 'receipt_parser/data/txt'
 UUID_REGEX = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 FILE_NAME_REGEX = '^[A-Za-z0-9_.-]+\.(jpg|jpeg|png)$'
 
+API_PREFIX = os.environ.get('SRM_API_PREFIX')
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), 'config/.env'))
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'this is a secret key'
+app.config['CORS_HEADERS'] = 'Content-Type'
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32 MB
+
+app.register_blueprint(
+    group_controller_bp, url_prefix=API_PREFIX)
+
+app.register_blueprint(
+    receipt_controller_bp, url_prefix=API_PREFIX)
+
+swagger = Swagger(app)
+
+CORS(app)
+
+# To be remove, replaced by MongoDBHelper
 DB = MongoDB()
 
-
-def on_exit():
-    LOGGER.info("on_exit() callback EXECUTED.")
+MongoDBHelper.connect_to_mongodb()
 
 
 def execute_receipt_parser(files_name):
     """
+    Moved to ParseRequestHandler class.
     Executes the receipt parser script as a separate thread, and
     calls the provided on_exit callback when the script exits.
     """
@@ -74,7 +90,6 @@ def execute_receipt_parser(files_name):
             parser_output_string = subprocess.check_output(
                 subprocess_command, encoding='utf-8')
 
-            on_exit()
             return parser_output_string
 
         except (OSError, subprocess.CalledProcessError) as exception:
@@ -86,14 +101,17 @@ def execute_receipt_parser(files_name):
         return future.result()
 
 
-@app.route('/test/groups', methods=['POST', 'GET'])
-def groups():
-    if request.method == "GET":
-        return DB.get_groups()
+# @app.route('/test/groups', methods=['POST', 'GET'])
+# def groups():
+#     if request.method == "GET":
+#         return DB.get_groups()
 
 
 @app.route('/test/group_records/<string:group_id>', methods=['GET'])
 def group_records(group_id):
+    """
+    DEPRECATED replaced with get_groups() in GroupController
+    """
     if request.method != "GET":
         return jsonify({'error': 'Invalid request method'}), 400
 
@@ -123,6 +141,9 @@ def group_records(group_id):
 
 @app.route('/test/groups_info', methods=['GET'])
 def groups_info():
+    """
+    Not used anymore, replaced with get_groups() in GroupController
+    """
     return DB.get_groups_info()
 
 
@@ -138,8 +159,14 @@ def recipt(id):
 
 UPLOAD_REQUEST_LOCK = threading.Lock()
 
+# REFACTOR vvvvvvvv
+
 
 class UploadRequests(object):
+    """
+    This class is used to manage the upload requests.
+    Now it is DEPRECATED and replaced by ParseRequestHandler class.
+    """
     pool = []
     invalid_requests_pool = []
     image_hashs = []
@@ -275,7 +302,9 @@ upload_requests = UploadRequests()
 
 
 def validate_upload_request(request_id, groups_info, group_id, total_files, file_name, image_file):
-
+    """ 
+    DEPRECATED replaced with ImageUploadValidator.validate(request_id, pagination: json, file_name, image_file):
+    """
     if not (re.match(UUID_REGEX, request_id) and upload_requests.is_valid_request(request_id)):
         return "Invalid request id."
 
@@ -302,7 +331,9 @@ def validate_upload_request(request_id, groups_info, group_id, total_files, file
 
 @app.route('/test/upload/<string:group_id>', methods=['POST'])
 def handle_upload(group_id):
-
+    """ 
+    DEPRECATED replaced with GroupController.handle_image_upload(group_id:str)
+    """
     # how many files are expected to be uploaded for this request_id
     request_id = request.form.get('request_id')
     total_files = request.form.get('total_files')
@@ -364,6 +395,8 @@ def handle_upload(group_id):
         return jsonify(response)
 
     return jsonify({"message": "Received", "file_name": escape(image_file.filename)})
+
+# TODO 28 May 2023: Refactor this class
 
 
 class Submit:
@@ -434,7 +467,12 @@ def handle_submit():
 
 @ app.route('/test/group_info/<string:group_id>', methods=['GET'])
 def handle_group_info(group_id):
+    """
+    DEPRECATED
+    """
     return DB.get_group_info(group_id), 200
+
+# TODO 28 May 2023: Move to a new controller file
 
 
 @ app.route('/external/abn/search', methods=['GET'])

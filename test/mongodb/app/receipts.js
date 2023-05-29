@@ -8,7 +8,10 @@ const ReceiptSchema = new Schema({
     file_name: String,
     merchant_name: String,
     merchant_phone: String,
-    payer: String, // object id
+    payer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'users',
+    },
     payment_method: String,
     payment_status: String,
     receipt_no: String,

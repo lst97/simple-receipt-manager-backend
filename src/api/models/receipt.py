@@ -1,22 +1,24 @@
-class receipt:
-    def __init__(self, abn, date, file_name, merchant_name, merchant_phone, payer, payment_method, payment_status, receipt_no, share_with, time, total):
-        # no id at the moment
-        self.abn = abn
-        self.date = date
-        self.file_name = file_name
-        self.merchant_name = merchant_name
-        self.merchant_phone = merchant_phone
-        self.payer = payer
-        self.payment_method = payment_method
-        self.payment_status = payment_status
-        self.receipt_no = receipt_no
-        # list of user names
-        self.share_with = share_with
-        self.time = time
-        self.total = total
+from mongoengine import Document, fields
+
+
+class Receipts(Document):
+    abn = fields.StringField(required=False)
+    date = fields.DateTimeField(required=False)
+    file_name = fields.StringField(required=True)
+    merchant_name = fields.StringField(required=True)
+    merchant_phone = fields.StringField(required=False)
+    payer = fields.ObjectIdField(required=True)
+    payment_method = fields.StringField(required=False)
+    payment_status = fields.StringField(required=True)
+    receipt_no = fields.StringField(required=False)
+    share_with = fields.ListField(
+        fields.ObjectIdField(required=True), required=False)
+    time = fields.DateTimeField(required=True)
+    total = fields.DecimalField(required=True)
+    __v = fields.IntField(db_field="__v")
 
     def __repr__(self):
-        return f"<receipt {self.id}>"
+        return f"<Receipt {self.id}>"
 
     def serialize(self):
         return {
@@ -25,11 +27,11 @@ class receipt:
             "file_name": self.file_name,
             "merchant_name": self.merchant_name,
             "merchant_phone": self.merchant_phone,
-            "payer": self.payer,
+            "payer": str(self.payer),
             "payment_method": self.payment_method,
             "payment_status": self.payment_status,
             "receipt_no": self.receipt_no,
-            "share_with": self.share_with,
+            "share_with": [str(person) for person in self.share_with],
             "time": self.time,
             "total": self.total
         }

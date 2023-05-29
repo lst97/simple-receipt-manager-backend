@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 mongoose.Promise = global.Promise;
 
 before((done) => {
-    mongoose.connect('mongodb://localhost/test');
+    mongoose.connect('mongodb://localhost/srm-test');
     mongoose.connection
         .once('open', () => {
             done();

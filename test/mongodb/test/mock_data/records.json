@@ -1,0 +1,27 @@
+[
+  {
+    "hash": "ffbf1f0e1e3e0704",
+    "base64": "//TEST BASE64==",
+    "receipt": "receipt._id1"
+  },
+  {
+    "hash": "awdnnns123madm",
+    "base64": "//TEST BASE64==",
+    "receipt": "receipt._id2"
+  },
+  {
+    "hash": "ghhckk1ffkand",
+    "base64": "//TEST BASE64==",
+    "receipt": "receipt._id3"
+  },
+  {
+    "hash": "ffnnamxk2214",
+    "base64": "//TEST BASE64==",
+    "receipt": "receipt._id4"
+  },
+  {
+    "hash": "fjabbsleffbwkk",
+    "base64": "//TEST BASE64==",
+    "receipt": "receipt._id5"
+  }
+]

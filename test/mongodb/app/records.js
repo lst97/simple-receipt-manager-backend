@@ -7,7 +7,7 @@ const RecordSchema = new Schema({
     base64: String,
     receipt: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Receipt',
+        ref: 'receipts',
     },
 });
 

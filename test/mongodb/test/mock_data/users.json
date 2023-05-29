@@ -1,0 +1,50 @@
+[
+  {
+    "name": "test",
+    "email": "test@test.com.au",
+    "password": "test",
+    "create_date": "2023-05-23T12:34:56Z",
+    "modified_date": "2023-05-23T12:34:56Z",
+    "role": "user"
+  },
+  {
+    "name": "John Doe",
+    "email": "john.doe@example.com",
+    "password": "p@ssw0rd",
+    "create_date": "2023-05-23T12:34:56Z",
+    "modified_date": "2023-05-23T12:34:56Z",
+    "role": "admin"
+  },
+  {
+    "name": "Alice Smith",
+    "email": "alice.smith@example.com",
+    "password": "mysecret",
+    "create_date": "2023-05-23T12:34:56Z",
+    "modified_date": "2023-05-23T12:34:56Z",
+    "role": "user"
+  },
+  {
+    "name": "Michael Johnson",
+    "email": "michael.johnson@example.com",
+    "password": "abc123",
+    "create_date": "2023-05-23T12:34:56Z",
+    "modified_date": "2023-05-23T12:34:56Z",
+    "role": "user"
+  },
+  {
+    "name": "Emily Brown",
+    "email": "emily.brown@example.com",
+    "password": "password123",
+    "create_date": "2023-05-23T12:34:56Z",
+    "modified_date": "2023-05-23T12:34:56Z",
+    "role": "user"
+  },
+  {
+    "name": "David Wilson",
+    "email": "david.wilson@example.com",
+    "password": "welcome1",
+    "create_date": "2023-05-23T12:34:56Z",
+    "modified_date": "2023-05-23T12:34:56Z",
+    "role": "user"
+  }
+]
